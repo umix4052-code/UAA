@@ -1,0 +1,152 @@
+            // --- PATH 2: OPENROUTER (Frame-based Worker Analysis) ---
+            else {
+                try {
+                    showNotification("Starting video visual analysis with OpenRouter (Frame-based)...");
+                    const allFrames = await extractFramesFromVideo(
+                        file, 
+                        1, // framesPerSecond
+                        (progress) => {
+                            setPromptGenerationProgress({ 
+                                current: progress.processed, 
+                                total: progress.total, 
+                                message: `Extracting frame ${progress.processed} of ${progress.total}...`, 
+                                isStalled: false 
+                            });
+                            if (progress.processed % 10 === 0) showNotification(`Extracting frames: ${progress.processed} of ${progress.total}...`);
+                        }
+                    );
+
+                    showNotification(`Frame extraction complete. ${allFrames.length} frames ready for analysis.`);
+                    
+                    const finalResults: SceneResult[] = [];
+                    // Group frames by time
+                    let framesPerGroup = 8;
+                    if (remakeType === 'shorts') framesPerGroup = 4;
+                    else if (remakeType === 'hyper-detailed') framesPerGroup = 1;
+
+                    const masterGroups: string[][] = [];
+                    for (let i = 0; i < allFrames.length; i += framesPerGroup) {
+                        masterGroups.push(allFrames.slice(i, i + framesPerGroup));
+                    }
+                    showNotification(`Created ${masterGroups.length} time-based groups for analysis.`);
+
+                    for (let i = 0; i < masterGroups.length; i++) {
+                        if (stopGenerationRef.current) { throw new Error("stopped"); }
+                        
+                        const masterGroup = masterGroups[i];
+                        const batches: string[][] = [];
+                        for (let j = 0; j < masterGroup.length; j += framesPerBatch) {
+                            batches.push(masterGroup.slice(j, j + framesPerBatch));
+                        }
+
+                        const cinematicPrompts: string[] = [];
+
+                        // Process sub-batches within the master group with a single, intelligent prompt
+                        for (let k = 0; k < batches.length; k++) {
+                            if (stopGenerationRef.current) { throw new Error("stopped"); }
+                            
+                            const batch = batches[k];
+                            const currentBatchNum = k + 1;
+                            const totalBatches = batches.length;
+                            const currentGroupNum = i + 1;
+                            const totalGroups = masterGroups.length;
+                            
+                            const segMessage = `AI analyzing Time Segment ${currentGroupNum} of ${totalGroups} (Batch ${currentBatchNum} of ${totalBatches})...`;
+                            const detailedSubMessage = `Processing frames for segment ${currentGroupNum}. Remaining segments: ${totalGroups - currentGroupNum}.`;
+                            
+                            showNotification(segMessage);
+                            setPromptGenerationProgress({ 
+                                current: i, 
+                                total: totalGroups, 
+                                message: `${segMessage} - ${detailedSubMessage}`, 
+                                isStalled: false 
+                            });
+                            showNotification(`AI is analyzing frames for segment ${currentGroupNum} of ${totalGroups}...`);
+                            
+                            const imageParts = batch.map(data => ({ inlineData: { mimeType: 'image/jpeg', data } }));
+                            
+                            // --- NEW "SETOBONDHON" PROMPT LOGIC ---
+                            const masterPrompt = getVisualRemakeJSON_FrameAnalysisPrompt(batch.length, projectNiche, remakeType, characterProfiles, useNegativePromptRef.current, negativePromptRef.current);
+                            
+                            const response = await executeGenerativeAiTask('', { parts: [{ text: masterPrompt }, ...imageParts] }, `remake group ${i+1} batch ${k+1}`);
+                            
+                            if(response.text && response.text.trim()) {
+                                cinematicPrompts.push(response.text.trim());
+                            }
+                        }
+
+                        // Combine results directly in code, no second AI call
+                        if (cinematicPrompts.length > 0) {
+                            const combinedParagraph = cinematicPrompts.join(' ');
+                            
+                            // Split the combined paragraph into sentences to create individual scenes
+                            const sentences = combinedParagraph.match(/[^.!?]+[.!?]+/g) || [combinedParagraph];
+                            
+                            sentences.forEach(sentence => {
+                                const trimmedSentence = sentence.trim();
+                                if (trimmedSentence) {
+                                    finalResults.push({
+                                        scene_description: trimmedSentence,
+                                        image_prompt: trimmedSentence,
+                                        video_prompt: '',
+                                        imageStatus: 'pending',
+                                        videoPromptStatus: 'pending'
+                                    });
+                                }
+                            });
+                            showNotification(`Segment ${i + 1} analysis complete. Total scenes so far: ${finalResults.length}.`);
+                        } else {
+                            console.warn(`Analysis for group ${i+1} returned empty text. Skipping this group.`);
+                            showNotification(`Warning: AI failed to analyze time segment ${i+1}. It will be skipped.`, true);
+                        }
+                    }
+                    allParsedResults = finalResults;
+                } catch (error: any) {
+                    throw error;
+                }
+            }
+    
+            // --- PROCESS FINAL RESULTS (COMMON FOR BOTH PROVIDERS) ---
+            if (allParsedResults && allParsedResults.length > 0) {
+                showNotification("Visual analysis complete. Populating storyboard...");
+                
+                let newResults: SceneResult[] = allParsedResults.map((s: any) => ({
+                    scene_description: s.scene_description || 'No description provided.',
+                    image_prompt: s.image_prompt || 'AI did not provide an image prompt.',
+                    video_prompt: '',
+                    imageStatus: 'pending',
+                    videoPromptStatus: 'pending'
+                }));
+                newResults = injectCharacterDescriptions(newResults, characterProfilesRef.current);
+                newResults = injectPostProcessingStyles(newResults, projectNicheRef.current, selectedThemesRef.current, selectedModifiersRef.current);
+                setResults(newResults);
+                setImageCount(newResults.length);
+                setAutoBreakdown(false);
+                showNotification(`Visual Remake storyboard complete! ${newResults.length} scenes generated.`);
+                
+                if (generatePromptsDirectly) {
+                    showNotification("Automatically generating video prompts...");
+                    setTimeout(() => handleGenerateVideoPrompts().catch(e => {
+                        if (e.message !== "stopped") handleError(e, 'auto video prompt generation');
+                    }), 100);
+                }
+            } else {
+                throw new Error("AI analysis did not return any scenes.");
+            }
+            
+            localStorage.removeItem('resumable_task');
+            localStorage.removeItem('interim_results');
+            setResumableTask(null);
+        } catch (e: any) {
+            if (e.message !== "stopped" && e.message !== "OPENROUTER_LIMIT_REACHED" && e.message !== "FATAL_STOP") {
+                handleError(e, isVisualRemake ? 'visual remake' : 'video file analysis', {});
+                localStorage.removeItem('resumable_task');
+                localStorage.removeItem('interim_results');
+                setResumableTask(null);
+            }
+        } finally {
+            if (stallTimeoutRef.current) clearTimeout(stallTimeoutRef.current);
+            setIsAnalyzingUrl(false);
+            setPromptGenerationProgress(null);
+        }
+    };

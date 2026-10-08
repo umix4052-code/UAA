@@ -1,0 +1,5 @@
+    useEffect(() => {
+        const newSize = apiProvider === 'google' ? 1200 : 800;
+        setDynamicChunkSize(newSize);
+        dynamicChunkSizeRef.current = newSize;
+

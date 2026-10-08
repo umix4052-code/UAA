@@ -1,0 +1,15 @@
+--- Catch Block around line 2229 ---
+handleError("Auto-rephrasing failed to generate a new prompt.", `Image Gen Safety Retry on Scene ${index + 1}`, {}); } } catch (rephraseError: any) { 
+
+--- Catch Block around line 3226 ---
+                    setTimeout(() => handleGenerateVideoPrompts().catch(e => {
+                        if (e.message !== "stopped") handleError(e, 'auto video prompt generation');
+                    }), 100);
+
+--- Catch Block around line 3279 ---
+        handleGenerateVideoPrompts(args?.count, args?.scriptContent, args?.isResume).catch(e => {
+            if (e.message !== "stopped" && e.message !== "PAUSED_BY_CIRCUIT_BREAKER" && e.message !== "ENV_LIMIT_REACHED" && e.message !== 'FATAL_STOP' && e.message !== 'OPENROUTER_LIMIT_REACHED') {
+                handleError(e, 'generate video prompts', { provider: apiProviderRef.current, model: videoModelRef.current });
+            }
+        });
+

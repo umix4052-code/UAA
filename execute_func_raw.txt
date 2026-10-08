@@ -1,0 +1,618 @@
+    const executeGenerativeAiTask = async (model: string, contents: any, operation: string, validator?: (text: string) => boolean, toolsConfig?: any, forceProvider?: 'google' | 'openrouter' | 'custom', systemInstruction?: string, timeoutMs?: number): Promise<{text: string}> => {
+        let isTimeout = false;
+        let combinedSignal = abortControllerRef.current?.signal;
+        let timeoutId: any;
+        if (timeoutMs) {
+            const localAbort = new AbortController();
+            timeoutId = setTimeout(() => {
+                isTimeout = true;
+                localAbort.abort();
+            }, timeoutMs);
+            const globalSignal = abortControllerRef.current?.signal;
+            if (globalSignal) {
+                globalSignal.addEventListener('abort', () => localAbort.abort());
+                if (globalSignal.aborted) localAbort.abort();
+            }
+            combinedSignal = localAbort.signal;
+        }
+
+        const TOTAL_MAX_ATTEMPTS_PER_TASK = 5;
+        let success = false;
+        let totalAttempts = 0;
+        let result: any = null;
+        
+        // BUG FIX: Strict Priority. If Built-in Key is enabled, forcefully use Google provider, bypassing stale custom/openrouter setups.
+        const providerToUse = useEnvApiKeyRef.current ? 'google' : (forceProvider || apiProvider);
+
+        const parseOpenRouterError = (e: any, modelName: string): string => {
+            const status = e.status;
+            const errorBody = e.error?.message || e.message || '';
+            
+            const today = getPacificTimeDateStr();
+            const dailyCount = parseInt(localStorage.getItem(`OR_req_count_${today}`) || '0');
+            const limitContext = dailyCount >= 40 ? ` (আপনি আজ প্রায় ${dailyCount} টি রিকোয়েস্ট করেছেন। ফ্রি লিমিট শেষ হতে পারে।)` : '';
+        
+            if (status === 401) {
+                return "OpenRouter Error: 401 Unauthorized. আপনার API Key তে সমস্যা আছে, অথবা এটি ইনভ্যালিড/ডিলিট হয়ে গেছে। দয়া করে API Key চেক করুন।";
+            }
+            if (status === 402 || errorBody.includes('quota') || errorBody.includes('credits')) {
+                if (errorBody.includes('free-models-per-day')) {
+                     return "OpenRouter: দিনের জন্য ফ্রি কোটা শেষ। দয়া করে আগামীকাল ট্রাই করুন অথবা ক্রেডিট অ্যাড করুন।";
+                }
+                return `OpenRouter: ক্রেডিট লিমিট শেষ!${limitContext} পর্যাপ্ত ব্যালেন্স নেই।`;
+            }
+            if (status === 429) {
+                return `OpenRouter: '${modelName}' এর জন্য রেট লিমিট!${limitContext} দয়া করে একটু অপেক্ষা করুন অথবা অন্য মডেল ট্রাই করুন।`;
+            }
+            if (status === 404 || errorBody.includes('not found')) {
+                return `Model Error: '${modelName}' মডেলটি পাওয়া যায়নি! দয়া করে মডেলের নাম চেক করুন অথবা অন্য কোন মডেল সিলেক্ট করুন।`;
+            }
+            if (status === 400) {
+                if (errorBody.includes('context_length_exceeded')) {
+                    return `Context Exceeded: স্ক্রিপ্টটি অনেক বড়! '${modelName}' এর কন্টেক্সট লিমিটের বাইরে। 'Process in Chunks' ইউজ করুন অথবা অন্য মডেল দিন।`;
+                }
+                if (errorBody.includes('content') || errorBody.includes('input format')) {
+                    return `Format Error: '${modelName}' এই ফরম্যাটে ইনপুট সাপোর্ট করছে সাপোর্ট করছে না। অন্য মডেল ট্রাই করুন।`;
+                }
+                return `Model Input Error: মডেলটি ইনপুট রিজেক্ট করেছে! অন্য একটি রেকমেন্ডেড মডেল ট্রাই করুন।`;
+            }
+            if (errorBody.includes('Failed to fetch') || e.message === 'Failed to fetch') {
+                return "OpenRouter API failed (Network error). Please check your internet connection or try again.";
+            }
+            if (e.message?.includes('fetch')) {
+                return `OpenRouter API failed: ${e.message}. Please try again.`;
+            }
+            return e.message || "An unknown OpenRouter error occurred.";
+        };
+    
+        // --- CUSTOM ROUTER IMPLEMENTATION (ISOLATED MODULE - safe to remove) ---
+        if (providerToUse === 'custom') {
+            if (stopGenerationRef.current) throw new Error("stopped");
+
+            // --- AUTO-CLAMP LOGIC FOR VISION ---
+            let processedContents = contents;
+            if (customRouterBaseUrl.toLowerCase().includes('groq') && contents && contents.parts) {
+                const imageParts = contents.parts.filter((p: any) => p.inlineData);
+                if (imageParts.length > 5) {
+                    showNotification("Groq Router allows max 5 frames per request. We automatically selected 5 frames for safety.", true);
+                    let imageCount = 0;
+                    const newParts = contents.parts.filter((p: any) => {
+                        if (p.inlineData) {
+                            imageCount++;
+                            return imageCount <= 5;
+                        }
+                        return true;
+                    });
+                    processedContents = { ...contents, parts: newParts };
+                }
+            }
+
+            while (true) {
+                try {
+                    const crResult = await executeCustomRouterTask(
+                        customRouterBaseUrl,
+                        customRouterApiKey,
+                        customRouterModelId,
+                        processedContents,
+                        systemInstruction,
+                        combinedSignal
+                    );
+                    if (timeoutId) clearTimeout(timeoutId);
+                    if (validator && !validator(crResult.text)) throw new Error("Content validation failed: AI returned invalid format.");
+                    return crResult;
+                } catch (e: any) {
+                    if (timeoutId) clearTimeout(timeoutId);
+                    if (e.name === 'AbortError' || e.message?.includes('aborted')) {
+                        if (isTimeout) throw new Error("TIMEOUT: The model took too long to respond.");
+                        throw new Error("stopped");
+                    }
+                    if (e.status === 429 || e.message?.includes('CUSTOM_LIMIT_REACHED') || e.message?.includes('rate_limit_exceeded')) {
+                        if (typeof setAutoRetryCountdown === 'function') setAutoRetryCountdown(60);
+                        showNotification("API limit reached. Waiting 60 seconds before retrying...", "error");
+                        let countdown = 60;
+                        while (countdown > 0) {
+                            if (stopGenerationRef.current) {
+                                setAutoRetryCountdown(null);
+                                throw new Error("stopped");
+                            }
+                            await new Promise(resolve => setTimeout(resolve, 1000));
+                            countdown--;
+                            if (typeof setAutoRetryCountdown === 'function') setAutoRetryCountdown(countdown);
+                        }
+                        if (typeof setAutoRetryCountdown === 'function') setAutoRetryCountdown(null);
+                        continue;
+                    }
+
+                    const crMessage = e.message || "An unknown Custom Router error occurred.";
+                    showNotification(`Custom Router Error: ${crMessage}`, true);
+                    handleError(crMessage, `Custom Router ${operation}`, { context: 'custom-router' });
+                    
+                    if (e.status === 401) {
+                        stopGenerationRef.current = true;
+                        throw new Error("CUSTOM_ROUTER_AUTH_FAILED: Your API key is invalid.");
+                    }
+                    throw e;
+                }
+            }
+        }
+
+        // --- OPEN ROUTER IMPLEMENTATION ---
+        if (providerToUse === 'openrouter') {
+            if (!openRouterApiKey) throw new Error("OpenRouter API Key is missing.");
+
+            let orModel = openRouterTextModel;
+            
+            // Only append :online if explicitly asked for routing Mode
+            if (openRouterModelMode === 'online' && !orModel.endsWith(':online') && !orModel.endsWith(':free')) {
+                orModel += ':online';
+            }
+
+            const isMultimodal = contents.parts && contents.parts.some((p: any) => p.inlineData);
+    
+            // PATH 1: MULTIMODAL (Visual Remake) - USE RAW FETCH AS PER USER INSTRUCTION
+            if (isMultimodal) {
+                let body: any;
+                const msgArray: any[] = [];
+                if (systemInstruction) msgArray.push({ role: "system", content: systemInstruction });
+
+                // --- SPECIAL ISOLATED LOGIC FOR QWEN3 VL THINKING MODEL ---
+                if (orModel === 'qwen/qwen3-vl-235b-a22b-thinking') {
+                    const qwenContentParts: any[] = contents.parts.map((part: any) => {
+                        if (part.text) return { type: "text", text: part.text };
+                        if (part.inlineData) return { type: "image_url", image_url: { url: `data:${part.inlineData.mimeType};base64,${part.inlineData.data}` } };
+                        return null;
+                    }).filter(Boolean);
+                    
+                    msgArray.push({ role: "user", content: qwenContentParts });
+                    body = {
+                        model: orModel,
+                        messages: msgArray,
+                        max_tokens: 1024,
+                        include_reasoning: true
+                    };
+                } 
+                // --- EXISTING LOGIC FOR OTHER MODELS (NVIDIA, ETC) ---
+                else {
+                    const contentParts: any[] = contents.parts.map((part: any) => {
+                        if (part.text) return { type: "text", text: part.text };
+                        if (part.inlineData) return { type: "image_url", image_url: { url: `data:${part.inlineData.mimeType};base64,${part.inlineData.data}` } };
+                        return null;
+                    }).filter(Boolean);
+                
+                    msgArray.push({ role: "user", content: contentParts });
+                    body = {
+                        model: orModel,
+                        messages: msgArray,
+                        temperature: 0.7,
+                        max_tokens: 4096
+                    };
+                    if (orModel.includes('-thinking') || orModel.includes('-reasoning')) {
+                        body.include_reasoning = true;
+                    }
+                }
+                
+                // Removed manual retry loop as fetchOpenRouter queue handles all rate limits properly
+                if (stopGenerationRef.current) throw new Error("stopped");
+                try {
+                    const response = await fetchOpenRouter('https://openrouter.ai/api/v1/chat/completions', {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${openRouterApiKey}`,
+                            'Content-Type': 'application/json',
+                            "HTTP-Referer": window.location.href,
+                            "X-Title": "Ultimate AI Automationer",
+                        },
+                        body: JSON.stringify(body),
+                        signal: combinedSignal,
+                    });
+                    if (timeoutId) clearTimeout(timeoutId);
+        
+                    const rawText = await response.text();
+                    let responseData;
+                    if (rawText.trim().startsWith('<')) {
+                        throw new Error(`Provider returned HTML instead of JSON. Server might be down (HTTP ${response.status}).`);
+                    }
+                    try {
+                        responseData = JSON.parse(rawText);
+                    } catch (e) {
+                        throw new Error(`Invalid API Response (HTTP ${response.status}): ${rawText.substring(0, 100)}...`);
+                    }
+
+                    if (!response.ok) {
+                        const error = new Error(JSON.stringify(responseData));
+                        (error as any).status = response.status;
+                        (error as any).error = responseData.error || { message: `HTTP ${response.status}: ${response.statusText}` };
+                        throw error;
+                    }
+                    
+                    const completion = responseData;
+
+                    // Visibility Check: Catch non-standard OpenRouter responses
+                    if (!completion || !completion.choices) {
+                        console.warn(`[OpenRouter] Invalid Response for model ${orModel}:`, completion);
+                        throw new Error(`OpenRouter returned unexpected format: ${JSON.stringify(completion)}`); 
+                    }
+
+                    const text = completion?.choices?.[0]?.message?.content || "";
+        
+                    if (validator && !validator(text)) throw new Error("Content validation failed: AI returned invalid format.");
+                    return { text };
+        
+                } catch (e: any) {
+                    if (timeoutId) clearTimeout(timeoutId);
+                    if (e.name === 'AbortError' || e.message?.includes('aborted')) {
+                        if (isTimeout) throw new Error("TIMEOUT: The model took too long to respond.");
+                        throw new Error("stopped");
+                    }
+                    const userFriendlyMessage = parseOpenRouterError(e, orModel);
+                    showNotification(`OpenRouter Error: ${userFriendlyMessage}`, true);
+                    handleError(userFriendlyMessage, `OpenRouter ${operation}`, { context: 'multimodal' });
+                    
+                    if (e.status === 402 || e.status === 429 || e.message?.includes('OPENROUTER_LIMIT_REACHED')) {
+                        stopGenerationRef.current = true;
+                        setQuotaProvider('OpenRouter');
+                        setQuotaLimitType('daily');
+                        setShowEnvLimitModal(true);
+                        throw new Error("OPENROUTER_LIMIT_REACHED");
+                    } else if (e.status === 401) {
+                        stopGenerationRef.current = true;
+                        throw new Error("OPENROUTER_AUTH_FAILED: Your API key is invalid.");
+                    } else if (e.status === 404 || e.status === 400) {
+                        stopGenerationRef.current = true;
+                        throw new Error("FATAL_STOP");
+                    } else {
+                        throw e;
+                    }
+                }
+            } 
+            
+            // PATH 2: TEXT-ONLY - Use new Fetch logic with dynamic content formatting
+            else {
+                const textContent = typeof contents === 'string' ? contents : contents.parts?.find((p: any) => p.text)?.text || '';
+                if (!textContent) throw new Error("No text content found for OpenRouter request.");
+
+                const baseModelId = orModel.split(':')[0];
+                let body: any;
+                const msgArray: any[] = [];
+                if (systemInstruction) msgArray.push({ role: "system", content: systemInstruction });
+
+                // SPECIFIC FIX FOR MISTRAL MODEL AS PER USER'S FETCH CODE
+                if (baseModelId === 'mistralai/mistral-small-3.1-24b-instruct') {
+                    // This model expects the content to always be an array, even for text-only.
+                    msgArray.push({
+                        role: "user",
+                        content: [{ type: "text", text: textContent }]
+                    });
+                    
+                    body = {
+                        model: orModel,
+                        messages: msgArray,
+                        temperature: 0.7,
+                        max_tokens: 4096,
+                    };
+                } else {
+                    // Fallback to the existing logic for all other models to prevent regressions.
+                    const contentPayload = OPENROUTER_SPECIAL_MODELS.includes(baseModelId)
+                        ? [{ type: "text", text: textContent }]
+                        : textContent;
+                    msgArray.push({ role: "user", content: contentPayload });
+                    
+                    body = {
+                        model: orModel,
+                        messages: msgArray,
+                        temperature: 0.7,
+                        max_tokens: 4096
+                    };
+                    if (orModel.includes('-thinking') || orModel.includes('-reasoning')) {
+                        body.include_reasoning = true;
+                    }
+                }
+                
+                // Removed manual retry loop as fetchOpenRouter queue handles all rate limits properly
+                if (stopGenerationRef.current) throw new Error("stopped");
+                try {
+                    const response = await fetchOpenRouter('https://openrouter.ai/api/v1/chat/completions', {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${openRouterApiKey}`,
+                            'Content-Type': 'application/json',
+                            "HTTP-Referer": window.location.href,
+                            "X-Title": "Ultimate AI Automationer",
+                        },
+                        body: JSON.stringify(body),
+                        signal: combinedSignal,
+                    });
+    
+                    if (timeoutId) clearTimeout(timeoutId);
+
+                    const rawText = await response.text();
+                    let responseData;
+                    if (rawText.trim().startsWith('<')) {
+                        throw new Error(`Provider returned HTML instead of JSON. Server might be down (HTTP ${response.status}).`);
+                    }
+                    try {
+                        responseData = JSON.parse(rawText);
+                    } catch (e) {
+                        throw new Error(`Invalid API Response (HTTP ${response.status}): ${rawText.substring(0, 100)}...`);
+                    }
+
+                    if (!response.ok) {
+                        const error = new Error(JSON.stringify(responseData)); // Stringify to preserve all details
+                        (error as any).status = response.status;
+                        (error as any).error = responseData.error || { message: `HTTP ${response.status}: ${response.statusText}` }; // Attach full error object
+                        throw error;
+                    }
+                    
+                    const completion = responseData;
+
+                    // Visibility Check: Catch non-standard OpenRouter responses
+                    if (!completion || !completion.choices) {
+                        console.warn(`[OpenRouter] Invalid Response for model ${orModel}:`, completion);
+                        throw new Error(`OpenRouter returned unexpected format: ${JSON.stringify(completion)}`); 
+                    }
+
+                    const text = completion?.choices?.[0]?.message?.content || "";
+                    
+                    // Handle potential empty responses that are still 'ok'
+                    if (!text && completion.choices[0]?.message) {
+                       console.warn(`AI for model ${orModel} returned a valid response but with empty content.`, completion.choices[0].message);
+                       // Allow empty but valid responses to pass validation if validator is not strict
+                       if (validator && !validator(text)) {
+                           throw new Error("Content validation failed: AI returned an empty but valid message object.");
+                       }
+                       return { text: "" }; // Return empty text
+                    }
+                    
+                    if (validator && !validator(text)) throw new Error("Content validation failed: AI returned invalid format.");
+                    return { text };
+    
+                } catch (e: any) {
+                    if (timeoutId) clearTimeout(timeoutId);
+                    if (e.name === 'AbortError' || e.message?.includes('aborted')) {
+                        if (isTimeout) throw new Error("TIMEOUT: The model took too long to respond.");
+                        throw new Error("stopped");
+                    }
+                    const userFriendlyMessage = parseOpenRouterError(e, orModel);
+                    showNotification(`OpenRouter Error: ${userFriendlyMessage}`, true);
+                    handleError(userFriendlyMessage, `OpenRouter ${operation}`, { prompt: textContent });
+                    
+                    if (e.status === 402 || e.status === 429 || e.message?.includes('OPENROUTER_LIMIT_REACHED')) {
+                        stopGenerationRef.current = true;
+                        setQuotaProvider('OpenRouter');
+                        setQuotaLimitType('daily');
+                        setShowEnvLimitModal(true);
+                        throw new Error("OPENROUTER_LIMIT_REACHED");
+                    } else if (e.status === 401) {
+                        stopGenerationRef.current = true;
+                        throw new Error("OPENROUTER_AUTH_FAILED: Your API key is invalid.");
+                    } else if (e.status === 404 || e.status === 400) {
+                        stopGenerationRef.current = true;
+                        throw new Error("FATAL_STOP");
+                    } else {
+                        throw e;
+                    }
+                }
+            }
+        }
+    
+        // --- GOOGLE GEMINI LOGIC ---
+        while (!success && totalAttempts < TOTAL_MAX_ATTEMPTS_PER_TASK) {
+            if (stopGenerationRef.current) throw new Error("stopped");
+            if (allKeysPermanentlyFailedRef.current && !useEnvApiKeyRef.current) throw new Error("All API keys have been disabled due to permanent errors. Please check your keys.");
+            totalAttempts++;
+            let selectedKey: string | null = null;
+            if (useEnvApiKeyRef.current) { selectedKey = "ENV_KEY"; } else {
+                const activeKeys = enabledApiKeysRef.current.filter(k => !disabledKeysForSession.includes(k));
+                if (activeKeys.length === 0) { if (enabledApiKeysRef.current.length > 0 && disabledKeysForSession.length >= enabledApiKeysRef.current.length) { throw new Error("All available API keys have been disabled due to permanent errors. Please check your keys."); } throw new Error("No enabled & active API keys."); }
+                const now = Date.now(); let nextAvailableKeyIndex = -1;
+                for (let i = 0; i < activeKeys.length; i++) { const keyIndex = (currentApiKeyIndexRef.current + i) % activeKeys.length; const key = activeKeys[keyIndex]; const cooldownExpiry = apiKeyCooldowns[key]; if (!cooldownExpiry || now > cooldownExpiry) { nextAvailableKeyIndex = keyIndex; break; } }
+                if (nextAvailableKeyIndex !== -1) { const previousKey = activeKeys[currentApiKeyIndexRef.current]; selectedKey = activeKeys[nextAvailableKeyIndex]; setCurrentApiKeyIndex(nextAvailableKeyIndex); if (previousKey !== selectedKey) { showNotification(`Switching to API Key: ...${selectedKey.slice(-4)}`); } } else { let soonestExpiry = Infinity; Object.values(apiKeyCooldowns).forEach((expiry: number) => { if (expiry < soonestExpiry) soonestExpiry = expiry; }); const waitTime = Math.max(0, soonestExpiry - now); showNotification(`All keys on cooldown. Waiting ${Math.round(waitTime / 1000)}s...`); await new Promise(resolve => setTimeout(resolve, waitTime + 500)); continue; }
+            }
+            try {
+                let effectiveModel = model;
+                if (providerToUse === 'google' && !model) {
+                    const opLower = operation.toLowerCase();
+                    if (opLower.includes('breakdown') || opLower.includes('split')) {
+                        effectiveModel = aiTaskModelsRef.current.scriptSceneBreakdown || 'gemini-3.5-flash';
+                    } else if (opLower.includes('rephrase') || opLower.includes('refin') || opLower.includes('tonal')) {
+                        effectiveModel = aiTaskModelsRef.current.scriptParaphrasing || 'gemini-3.5-flash';
+                    } else if (opLower.includes('story') || opLower.includes('generate story')) {
+                        effectiveModel = aiTaskModelsRef.current.uniqueStoryGeneration || 'gemini-3.5-flash';
+                    } else if (opLower.includes('auto-configure voiceover')) {
+                        effectiveModel = aiTaskModelsRef.current.simpleTaskFallback || 'gemini-3.5-flash';
+                    } else if (opLower.includes('voice') || opLower.includes('tts')) {
+                        effectiveModel = aiTaskModelsRef.current.voiceoverAudioGeneration || 'gemini-2.5-flash-preview-tts';
+                    } else {
+                        const isComplexTask = opLower.includes('script') || opLower.includes('prompts');
+                        effectiveModel = isComplexTask ? aiTaskModelsRef.current.complexTaskFallback : aiTaskModelsRef.current.simpleTaskFallback;
+                    }
+                }
+
+                const ai = getAiClient(useEnvApiKeyRef.current ? undefined : selectedKey);
+                const requestOptions: any = { model: effectiveModel, contents };
+                
+                // Deep copy contents for file upload to ensure cross-key retry safety
+                if (providerToUse === 'google' && contents?.parts) {
+                    const clonedParts = [...contents.parts];
+                    let hasUpload = false;
+                    for (let i = 0; i < clonedParts.length; i++) {
+                        if (clonedParts[i].fileToUpload) {
+                            hasUpload = true;
+                            const fileObj = clonedParts[i].fileToUpload;
+                            if (setPromptGenerationProgress) {
+                                setPromptGenerationProgress(prev => prev ? { ...prev, message: "Uploading large file to AI framework securely (without Base64 memory usage)..." } : { current: 15, total: 100, message: "Uploading large file...", isStalled: false });
+                            }
+                            showNotification("Uploading file securely to AI. This bypasses memory issues...");
+                            let uploadedFile = await ai.files.upload({ file: fileObj, config: { mimeType: fileObj.type } });
+                            
+                            // Wait for file to become active
+                            let waitTime = 0;
+                            const MAX_WAIT_TIME = 15 * 60 * 1000; // 15 minutes
+                            while (uploadedFile.state === 'PROCESSING' && waitTime < MAX_WAIT_TIME) {
+                                if (setPromptGenerationProgress) {
+                                    setPromptGenerationProgress(prev => prev ? { ...prev, message: `Waiting for AI to process uploaded file... (${Math.round(waitTime/1000)}s)` } : { current: 15, total: 100, message: "Waiting for processing...", isStalled: false });
+                                }
+                                await new Promise(resolve => setTimeout(resolve, 5000));
+                                uploadedFile = await ai.files.get({name: uploadedFile.name});
+                                waitTime += 5000;
+                            }
+                            
+                            if (uploadedFile.state !== 'ACTIVE') {
+                                throw new Error(`File upload failed or timed out: State is ${uploadedFile.state}`);
+                            }
+
+                            clonedParts[i] = { fileData: { fileUri: uploadedFile.uri, mimeType: fileObj.type } };
+                            showNotification("File upload successful. Analyzing data...");
+                        }
+                    }
+                    if (hasUpload) {
+                        requestOptions.contents = { ...contents, parts: clonedParts };
+                    }
+                }
+
+                if (toolsConfig || systemInstruction || combinedSignal) { 
+                    requestOptions.config = { ...toolsConfig };
+                    if (systemInstruction) {
+                        requestOptions.config.systemInstruction = systemInstruction;
+                    }
+                    if (combinedSignal) {
+                        requestOptions.config.abortSignal = combinedSignal;
+                    }
+                }
+                showNotification(`Sending request to API using model: ${effectiveModel}`, false, effectiveModel);
+                const response = await ai.models.generateContent(requestOptions);
+                
+                const promptFeedback = response.promptFeedback;
+                if (promptFeedback?.blockReason) {
+                    throw new Error(`Safety Policy Violation (Prompt Blocked): The AI blocked this request. Reason: ${promptFeedback.blockReason}`);
+                }
+                
+                const candidate = response.candidates?.[0];
+                if (candidate?.finishReason === 'SAFETY') {
+                    throw new Error("Safety Policy Violation (Content Restricted): The AI stopped generation due to safety concerns.");
+                }
+                if (candidate?.finishReason && candidate.finishReason !== 'STOP') {
+                    throw new Error(`AI generation stopped unexpectedly. Reason: ${candidate.finishReason}`);
+                }
+                
+                let text = "";
+                try {
+                    text = response.text;
+                    if (!text || text.trim() === "") throw new Error("Empty text");
+                } catch (textErr) {
+                    throw new Error("AI returned an empty response. This is usually due to a Safety Policy Violation (Restricted Content) or Network Issue.");
+                }
+
+                if (validator && !validator(text)) { throw new Error("Content validation failed: AI returned invalid format or empty response."); }
+                result = { text };
+
+                // Track Google Gemini Daily Requests & Estimated Token Usage
+                try {
+                    const todayStr = getPacificTimeDateStr();
+                    const reqCount = parseInt(localStorage.getItem(`ai_daily_requests_${todayStr}`) || '0');
+                    
+                    const currentModel = (model || 'flash').toLowerCase(); 
+                    let creditCost = 15; // ফ্ল্যাশের জন্য ডিফল্ট
+
+                    if (currentModel.includes('pro')) {
+                        creditCost = 30; // Pro এর জন্য
+                    } else if (currentModel.includes('tts') || currentModel.includes('audio') || currentModel.includes('voice')) {
+                        creditCost = 20; // ভয়েস/অডিও মডেলের জন্য
+                    }
+                    
+                    const nextReqCount = reqCount + creditCost;
+                    localStorage.setItem(`ai_daily_requests_${todayStr}`, nextReqCount.toString());
+                    
+                    let estTokens = 0;
+                    if (typeof contents === 'string') {
+                        estTokens += contents.length * 0.3;
+                    } else if (contents && Array.isArray(contents)) {
+                        contents.forEach((item: any) => {
+                            if (typeof item === 'string') estTokens += item.length * 0.3;
+                            else if (item.text) estTokens += item.text.length * 0.3;
+                        });
+                    } else if (contents?.parts) {
+                        contents.parts.forEach((p: any) => {
+                            if (p.text) estTokens += p.text.length * 0.3;
+                            if (p.inlineData) estTokens += 8000;
+                            if (p.fileToUpload) estTokens += 150000;
+                        });
+                    }
+                    if (text) {
+                        estTokens += text.length * 0.45;
+                    }
+                    
+                    const isPro = effectiveModel && (effectiveModel.includes('pro') || effectiveModel.includes('reasoning'));
+                    const multiplier = isPro ? 12 : 1;
+                    const finalEstTokens = Math.round(estTokens * multiplier);
+                    
+                    const tokenCount = parseInt(localStorage.getItem(`ai_daily_tokens_${todayStr}`) || '0');
+                    localStorage.setItem(`ai_daily_tokens_${todayStr}`, (tokenCount + finalEstTokens).toString());
+                } catch (err) {
+                    console.error("Error tracking API stats:", err);
+                }
+
+                success = true; consecutiveApiFailuresRef.current = 0;
+            } catch (e: any) {
+                const failedKey = selectedKey; const isContentError = e.message.includes("Content validation failed");
+                if (isContentError) { handleError(e, `Content Error on ${operation}`, { apiKey: failedKey, attempt: totalAttempts }, effectiveModel); } else { handleError(e, `API Error on ${operation}`, { apiKey: failedKey, attempt: totalAttempts }, effectiveModel); }
+                
+                if (useEnvApiKeyRef.current && (e.message?.includes('limit: 0') || (e.message?.toLowerCase().includes('quota') && !e.message?.includes('429')))) {
+                    stopGenerationRef.current = true;
+                    setQuotaProvider('Gemini');
+                    setShowEnvLimitModal(true);
+                    throw new Error("ENV_LIMIT_REACHED");
+                }
+
+                const isRateLimit = e.message?.includes('429') || e.message?.includes('Resource has been exhausted') || e.message?.includes('Too Many Requests');
+                const isPermanentFailure = !isRateLimit && (e.message?.includes('limit: 0') || e.message?.includes('API key not valid') || e.message?.includes('API_KEY_INVALID'));
+
+                if (isRateLimit) {
+                    const dynamicDelay = 90000;
+                    
+                    if (totalAttempts === 1) { // 2nd attempt
+                        stopGenerationRef.current = true;
+                        setQuotaProvider('Gemini');
+                        setQuotaLimitType('daily');
+                        setShowEnvLimitModal(true);
+                        throw new Error("ENV_LIMIT_REACHED");
+                    } else if (totalAttempts >= 2) {
+                        throw new Error("ENV_LIMIT_REACHED");
+                    }
+                    
+                    const waitMins = Math.floor(dynamicDelay / 60000);
+                    const waitSecs = Math.floor((dynamicDelay % 60000) / 1000);
+                    showNotification(`Gemini Rate Limit Hit. Waiting ${waitMins}m ${waitSecs}s then trying again...`, true);
+                    
+                    await smartDelay(dynamicDelay, 'Gemini');
+                    // Allow the loop to try again without forcing circuit breaker limits instantly
+                    continue;
+                }
+
+                if (useEnvApiKeyRef.current) { await new Promise(resolve => setTimeout(resolve, 2500)); continue; }
+                
+                if (isPermanentFailure && failedKey) { 
+                    setDisabledKeysForSession(prev => { 
+                        const newDisabled = [...new Set([...prev, failedKey])]; 
+                        if (newDisabled.length >= enabledApiKeysRef.current.length) { setAllKeysPermanentlyFailed(true); } 
+                        return newDisabled; 
+                    }); 
+                    showNotification(`API Key ...${failedKey.slice(-4)} is invalid or has billing issues. Disabling for this session.`, true); 
+                } else if (failedKey) { 
+                    setApiKeyCooldowns(prev => ({ ...prev, [failedKey]: Date.now() + 61000 })); 
+                    consecutiveApiFailuresRef.current++; 
+                    if (consecutiveApiFailuresRef.current >= 3) { 
+                        const circuitBreakerMsg = "Circuit Breaker: Paused due to 3 consecutive API errors. Check your keys and logs."; 
+                        showNotification(circuitBreakerMsg, true); 
+                        setIsPausedByCircuitBreaker(true); 
+                        stopGenerationRef.current = true; 
+                        throw new Error("PAUSED_BY_CIRCUIT_BREAKER"); 
+                    } 
+                }
+                await new Promise(resolve => setTimeout(resolve, 2500));
+            }
+        }
+        if (!success) { const finalError = new Error(`Failed operation "${operation}" after ${TOTAL_MAX_ATTEMPTS_PER_TASK} attempts across all keys.`); 
+handleError(finalError, `Total Failure on ${operation}`, {}); throw finalError; }
+        return result;
+    };

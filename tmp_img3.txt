@@ -1,0 +1,248 @@
+    const executePromptAndImageGeneration = async (): Promise<boolean> => {
+        if (!validateNicheSelection()) return false;
+        const rawResumable = localStorage.getItem('resumable_task');
+        let currentTask: ResumableTask | null = resumableTask;
+        if (rawResumable) {
+            try { currentTask = JSON.parse(rawResumable); } catch (e) {}
+        }
+
+        const rawInterim = localStorage.getItem('interim_results');
+        let localStorageResults: SceneResult[] = [];
+        if (rawInterim) {
+             try { localStorageResults = JSON.parse(rawInterim); } catch (e) {}
+        }
+        
+        let allParsedResults = resultsRef.current.length > 0 ? [...resultsRef.current] : localStorageResults;
+        const hasExistingPrompts = allParsedResults.length > 0 && allParsedResults.some(r => !!r.image_prompt);
+        
+        let isResuming = false;
+        let startFrom = 0;
+
+        if (currentTask && currentTask.type === 'auto_scene_gen') {
+             isResuming = true;
+             startFrom = currentTask.progress;
+        } else if (hasExistingPrompts) {
+             isResuming = true;
+             const incomplete = allParsedResults.findIndex(r => r.imageStatus !== 'completed');
+             startFrom = incomplete !== -1 ? incomplete : 0;
+        }
+
+        setIsLoading(true);
+        if (!isResuming && !isVideoPromptsGenerated) {
+            setResults([]);
+            allParsedResults = [];
+        } else if (resultsRef.current.length === 0 && allParsedResults.length > 0) {
+            // Restore context if memory was empty but file data was there
+            setResults(allParsedResults);
+            resultsRef.current = allParsedResults;
+        }
+
+        setPromptGenerationProgress({ current: startFrom, total: isResuming ? (currentTask?.imageCount || allParsedResults.length || imageCountRef.current) : imageCountRef.current, message: isResuming ? "Resuming generation..." : "Initializing...", isStalled: false });
+    
+        try {
+            if (!isResuming) {
+                const BATCH_SIZE_PROMPTS = 10;
+                showNotification(autoBreakdown ? `Generating prompts scene-by-scene from script...` : `Generating ${imageCountRef.current} prompts in batches...`);
+    
+                if (autoBreakdown) {
+                    const defaultSize = apiProviderRef.current === 'google' ? 1200 : 800;
+                    const maxChunkLength = Math.max(200, Math.min(1500, dynamicChunkSizeRef.current || defaultSize));
+                    if (scriptRef.current.length > maxChunkLength) {
+                        setPromptGenerationProgress({ current: 0, total: 100, message: `Analyzing long script (chunking for scene breakdown)...`, isStalled: false });
+                        const chunks = splitScriptIntoMeaningfulChunks(scriptRef.current, maxChunkLength);
+                        let aggregatedResults: SceneResult[] = [];
+                        
+                        if (chunks.length > 1) {
+                            showNotification("Generating Global Story Summary...");
+                            setPromptGenerationProgress({ current: 0, total: 1, message: "Analyzing Script & Generating Global Story Summary..." });
+                            const summaryPrompt = `Based on the following full script, generate a concise Global Story Summary & Visual Theme (300-400 words). Focus heavily on the core narrative arc, the setting, the primary vibe, and the overall visual aesthetic that should remain consistent throughout. Do NOT generate scenes, just the summary.\n\nScript:\n${scriptRef.current}`;
+                            const summaryResult = await executeGenerativeAiTask('', summaryPrompt, 'generate global summary', undefined, undefined, undefined, 'You are an expert story and visual analyst.');
+                            globalSummaryRef.current = summaryResult.text ? summaryResult.text.trim() : '';
+                        }
+
+                        for (let i = 0; i < chunks.length; i++) {
+                            if (stopGenerationRef.current) throw new Error("stopped");
+                            const chunk = chunks[i];
+                            const chunkWords = chunk.split(/\s+/).filter(w => w.trim().length > 0).length;
+                            const chunkEstimatedSeconds = (chunkWords / 120) * 60;
+                            const targetDuration = targetSceneDurationRef.current || 8;
+                            const expectedScenes = Math.max(1, Math.round(chunkEstimatedSeconds / targetDuration));
+                            
+                            const progressMessage = `Breaking down script chunk ${i + 1} of ${chunks.length} (Target: ~${expectedScenes} scenes)...`;
+                            setPromptGenerationProgress({ current: i, total: chunks.length, message: progressMessage, isStalled: false });
+                            showNotification(progressMessage);
+                            const { systemData, userData } = getScriptToStoryboardPrompt(chunk, expectedScenes, selectedThemesRef.current, selectedModifiersRef.current, cameraAngleRef.current.length > 0 ? cameraAngleRef.current.join(', ') : 'Default', aspectRatioRef.current, characterProfilesRef.current, negativePromptRef.current, useNegativePromptRef.current, projectNicheRef.current, referenceFilesRef.current, undefined, undefined, true, targetSceneDurationRef.current, undefined, undefined, globalSummaryRef.current);
+                            const result = await executeGenerativeAiTask('', userData, `generate prompts auto-breakdown chunk ${i+1}`, jsonValidator, undefined, undefined, systemData);
+                            const cleanedJson = extractJsonFromString(result.text);
+                            const parsedJson = JSON.parse(cleanedJson);
+                         let parsedScenes = parsedJson.scenes; if (!parsedScenes || !Array.isArray(parsedScenes)) throw new Error("JSON generation truncated due to token limit.");
+                         if (parsedJson.current_visual_state) {
+                             previousVisualState = parsedJson.current_visual_state;
+                         } let batchResults: SceneResult[] = parsedScenes.map((scene: any) => ({ ...scene, image_prompt: scene.master_prompt || scene.image_prompt || "" }));
+                            batchResults = injectCharacterDescriptions(batchResults, characterProfilesRef.current);
+                            batchResults = injectPostProcessingStyles(batchResults, projectNicheRef.current, selectedThemesRef.current, selectedModifiersRef.current);
+                            const newResults = batchResults.map(r => ({ ...r, imageStatus: 'pending' as const, retryCount: 0, safetyRetryCount: 0 }));
+                            aggregatedResults = aggregatedResults.concat(newResults);
+                        }
+                        allParsedResults = aggregatedResults;
+                    } else {
+                        setPromptGenerationProgress({ current: 0, total: 100, message: `Analyzing script and breaking down scenes...`, isStalled: false });
+                        const scriptWords = scriptRef.current.split(/\s+/).filter(w => w.trim().length > 0).length;
+                        const estimatedSeconds = (scriptWords / 120) * 60;
+                        const targetDuration = targetSceneDurationRef.current || 8;
+                        const expectedScenes = Math.max(1, Math.round(estimatedSeconds / targetDuration));
+
+                        const { systemData, userData } = getScriptToStoryboardPrompt(scriptRef.current, expectedScenes, selectedThemesRef.current, selectedModifiersRef.current, cameraAngleRef.current.length > 0 ? cameraAngleRef.current.join(', ') : 'Default', aspectRatioRef.current, characterProfilesRef.current, negativePromptRef.current, useNegativePromptRef.current, projectNicheRef.current, referenceFilesRef.current, undefined, undefined, true, targetSceneDurationRef.current);
+                        const result = await executeGenerativeAiTask('', userData, `generate prompts auto-breakdown`, jsonValidator, undefined, undefined, systemData);
+                        const responseText = result.text;
+                        const cleanedJson = extractJsonFromString(responseText);
+                        const parsedJson = JSON.parse(cleanedJson);
+                         let parsedScenes = parsedJson.scenes; if (!parsedScenes || !Array.isArray(parsedScenes)) throw new Error("JSON generation truncated due to token limit.");
+                         if (parsedJson.current_visual_state) {
+                             previousVisualState = parsedJson.current_visual_state;
+                         } let batchResults: SceneResult[] = parsedScenes.map((scene: any) => ({ ...scene, image_prompt: scene.master_prompt || scene.image_prompt || "" }));
+                        batchResults = injectCharacterDescriptions(batchResults, characterProfilesRef.current);
+                        batchResults = injectPostProcessingStyles(batchResults, projectNicheRef.current, selectedThemesRef.current, selectedModifiersRef.current);
+                        allParsedResults = batchResults.map(r => ({ ...r, imageStatus: 'pending', retryCount: 0, safetyRetryCount: 0 }));
+                    }
+                    setImageCount(allParsedResults.length);
+                    showNotification(`Script broken down into ${allParsedResults.length} scenes!`);
+                } else {
+                    for (let i = 0; i < imageCountRef.current; i += BATCH_SIZE_PROMPTS) {
+                        if (stopGenerationRef.current) throw new Error("stopped");
+                        const currentBatchSize = Math.min(BATCH_SIZE_PROMPTS, imageCountRef.current - i);
+                        const sceneStart = i + 1;
+                        const sceneEnd = i + currentBatchSize;
+                        const progressMessage = `Writing prompts for Scene ${sceneStart}-${sceneEnd}... ${i} generated, ${imageCountRef.current - i} remaining. (${Math.round((i / imageCountRef.current) * 100)}%)`;
+                        setPromptGenerationProgress({ current: i, total: imageCountRef.current, message: progressMessage, isStalled: false });
+                        showNotification(progressMessage);
+                        const { systemData, userData } = getScriptToStoryboardPrompt(scriptRef.current, imageCountRef.current, selectedThemesRef.current, selectedModifiersRef.current, cameraAngleRef.current.length > 0 ? cameraAngleRef.current.join(', ') : 'Default', aspectRatioRef.current, characterProfilesRef.current, negativePromptRef.current, useNegativePromptRef.current, projectNicheRef.current, referenceFilesRef.current, sceneStart, sceneEnd, false, targetSceneDurationRef.current);
+                        const result = await executeGenerativeAiTask('', userData, `generate prompts batch ${Math.ceil(sceneStart / BATCH_SIZE_PROMPTS)}`, jsonValidator, undefined, undefined, systemData);
+                        const responseText = result.text;
+                        const cleanedJson = extractJsonFromString(responseText);
+                        const parsedJson = JSON.parse(cleanedJson);
+                         let parsedScenes = parsedJson.scenes; if (!parsedScenes || !Array.isArray(parsedScenes)) throw new Error("JSON generation truncated due to token limit.");
+                         if (parsedJson.current_visual_state) {
+                             previousVisualState = parsedJson.current_visual_state;
+                         } let batchResults: SceneResult[] = parsedScenes.map((scene: any) => ({ ...scene, image_prompt: scene.master_prompt || scene.image_prompt || "" }));
+                        batchResults = injectCharacterDescriptions(batchResults, characterProfilesRef.current);
+                        batchResults = injectPostProcessingStyles(batchResults, projectNicheRef.current, selectedThemesRef.current, selectedModifiersRef.current);
+                        batchResults = batchResults.map(r => ({ ...r, imageStatus: 'pending', retryCount: 0, safetyRetryCount: 0 }));
+                        allParsedResults = [...allParsedResults, ...batchResults];
+                        setResults(prev => [...prev, ...batchResults]);
+                    }
+                }
+                setResults(allParsedResults);
+            }
+    
+            if (allParsedResults.length === 0) throw new Error("No prompts generated.");
+    
+            const newTask: ResumableTask = {
+                id: `script_gen_${allParsedResults.length}`,
+                type: 'auto_scene_gen',
+                provider: apiProviderRef.current,
+                progress: startFrom,
+                imageCount: allParsedResults.length
+            };
+            localStorage.setItem('resumable_task', JSON.stringify(newTask));
+            setResumableTask(newTask);
+            if (startFrom === 0) {
+                 localStorage.setItem('interim_results', JSON.stringify(allParsedResults));
+            }
+    
+            setIsLoading(false);
+            setIsBatchGenerating(true);
+            showNotification(`Generating ${allParsedResults.length - startFrom} images... Est. time: ${Math.ceil((allParsedResults.length - startFrom) * 10 / 60)} min`);
+            
+            const BATCH_SIZE_IMAGES = 20;
+            let processedInThisSession = 0;
+            for (let i = startFrom; i < allParsedResults.length; i++) {
+                if (stopGenerationRef.current) throw new Error('stopped');
+                
+                // CRITICAL FIX: Skip images that are already completed (important for resuming when previous images succeeded)
+                if (resultsRef.current[i]?.imageStatus === 'completed') {
+                     continue;
+                }
+    
+                if (processedInThisSession > 0 && processedInThisSession % BATCH_SIZE_IMAGES === 0) {
+                    const batchEnd = Math.min(i + BATCH_SIZE_IMAGES, allParsedResults.length);
+                    const batchMessage = `Processing Batch... Generating Images ${i + 1} to ${batchEnd} of ${allParsedResults.length}...`;
+                    showNotification(batchMessage);
+                    setPromptGenerationProgress({ 
+                        current: i, 
+                        total: allParsedResults.length, 
+                        message: batchMessage, 
+                        isStalled: false 
+                    });
+
+                    if (apiProviderRef.current === 'google' && !useEnvApiKeyRef.current) {
+                        const activeKeys = enabledApiKeysRef.current.filter(k => !disabledKeysForSession.includes(k));
+                        if (activeKeys.length > 1) {
+                            setCurrentApiKeyIndex(prev => (prev + 1) % activeKeys.length);
+                        }
+                    }
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                }
+    
+                try {
+                    const remainingImages = allParsedResults.length - i;
+                    const progressMessage = `Generating Image ${i + 1} of ${allParsedResults.length}... ${i} completed, ${remainingImages} remaining. (${Math.round((i / allParsedResults.length) * 100)}%)`;
+                    setPromptGenerationProgress({ current: i, total: allParsedResults.length, message: progressMessage, isStalled: false });
+                    
+                    let targetPrompt = allParsedResults[i]?.image_prompt || '';
+                    if (resultsRef.current[i] && resultsRef.current[i].image_prompt) {
+                        targetPrompt = resultsRef.current[i].image_prompt;
+                    }
+                    
+                    await executeSingleImageGeneration(i, targetPrompt);
+                    
+                    localStorage.setItem('interim_results', JSON.stringify(resultsRef.current));
+                    
+                    setResumableTask(prev => {
+                        if (!prev) return null;
+                        // Determine next actual incomplete index for accurate progress tracking
+                        const nextIncomplete = resultsRef.current.findIndex((r, idx) => r && idx > i && r.imageStatus !== 'completed');
+                        const updatedProgress = nextIncomplete !== -1 ? nextIncomplete : i + 1;
+                        
+                        const updated = { ...prev, progress: updatedProgress, provider: apiProviderRef.current };
+                        localStorage.setItem('resumable_task', JSON.stringify(updated));
+                        return updated;
+                    });
+                    
+                    processedInThisSession++;
+                } catch (e: any) {
+                    throw e; 
+                }
+    
+                if (i < allParsedResults.length - 1) {
+                    await new Promise(resolve => setTimeout(resolve, 1500));
+                }
+            }
+    
+            localStorage.removeItem('resumable_task');
+            localStorage.removeItem('interim_results');
+            setResumableTask(null);
+    
+            return true;
+    
+        } catch (e: any) {
+            if (e.message !== "stopped" && e.message !== "PAUSED_BY_CIRCUIT_BREAKER" && e.message !== "ENV_LIMIT_REACHED" && e.message !== 'FATAL_STOP' && e.message !== 'OPENROUTER_LIMIT_REACHED') {
+                handleError(e, 'generate prompts and images', {});
+            }
+            if (e.message === "ENV_LIMIT_REACHED") {
+                resetAllLoadingStates();
+            }
+            throw e;
+        } finally {
+            setIsLoading(false);
+            setIsBatchGenerating(false);
+            setPromptGenerationProgress(null);
+            
+            const finalFailedCount = resultsRef.current.filter(r => r && r.imageStatus === 'failed').length;
+            if (finalFailedCount === 0 && !stopGenerationRef.current) {
+                 localStorage.removeItem('resumable_task');
+                 localStorage.removeItem('interim_results');
+                 setResumableTask(null);
+            }
+        }
+    };

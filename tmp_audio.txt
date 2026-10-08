@@ -1,0 +1,51 @@
+    const handleAudioAutopilot = async () => {
+        showNotification("Audio Autopilot Initiated.");
+        try {
+            if (!customTtsPrompt.trim()) {
+                setPromptGenerationProgress({ current: 0, total: 100, message: "Auto-configuring voiceover...", isStalled: false });
+                await autoConfigureVoiceover(voiceoverScriptRef.current, 'any', true);
+            }
+            setPromptGenerationProgress({ current: 20, total: 100, message: "Generating audio chunks...", isStalled: false });
+            await handleGenerateChunkedAudio();
+            const checkCompletion = () => new Promise<boolean>(resolve => {
+                const interval = setInterval(() => {
+                    const allDone = audioChunksRef.current.every(c => c.status === 'complete' || c.status === 'failed');
+                    const completed = audioChunksRef.current.filter(c => c.status === 'complete').length;
+                    setPromptGenerationProgress({ current: 20 + Math.floor((completed / audioChunksRef.current.length) * 60), total: 100, message: `Generating chunk ${completed} of ${audioChunksRef.current.length}...`, isStalled: false });
+                    if (allDone) {
+                        clearInterval(interval);
+                        const hasFailures = audioChunksRef.current.some(c => c.status === 'failed');
+                        resolve(!hasFailures);
+                    }
+                }, 1000);
+            });
+            const success = await checkCompletion();
+            if (!success) {
+                showNotification("Audio Autopilot: Some chunks failed. Merging the successful ones.", true);
+            }
+            setPromptGenerationProgress({ current: 90, total: 100, message: "Merging audio chunks...", isStalled: false });
+            await handleMergeAndDownload();
+            setPromptGenerationProgress(null);
+            showNotification("Audio Autopilot Completed!");
+        } catch (e: unknown) {
+            setPromptGenerationProgress(null);
+            handleError(e, 'Audio Autopilot', {});
+            throw new Error("AUDIO_GENERATION_FAILED");
+        }
+    };
+
+    return {
+        voiceoverScript, setVoiceoverScript, customTtsPrompt, setCustomTtsPrompt,
+        ttsConfig, setTtsConfig, isGeneratingAudio, generatedAudioBytes, generatedAudioUrl,
+        isAuditioning, isAutoConfiguringVoice, isFittingScript, forceSpeed, setForceSpeed,
+        isGeneratingSample, sampleAudioUrl, audioChunks, setAudioChunks, isGeneratingChunks,
+        isMergingAudio, isProcessingScript, isScriptProcessed, processingOptions, setProcessingOptions,
+        chunkMode, setChunkMode,
+        useSelectedVoice, setUseSelectedVoice, autoConfigureVoiceover, handleAuditionVoice,
+        handleFitScriptToDuration, handleStopAudioGeneration, handleStopChunkGeneration,
+        handleGenerateSample, handleGenerateVoiceover, handleDownloadAudio,
+        handleGenerateChunkedAudio, handleRetrySingleAudioChunk, handleMergeAndDownload,
+        handleDownloadAllChunksZip, handleProcessScript, handleExportCleanScript,
+        handleAudioAutopilot, handleClearVoiceCache,
+    };
+};

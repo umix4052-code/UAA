@@ -1,0 +1,205 @@
+export const getScriptToStoryboardPrompt = (
+    script: string,
+    imageCount: number,
+    selectedThemes: string[],
+    selectedModifiers: string[],
+    cameraAngle: string,
+    aspectRatio: string,
+    characterProfiles: CharacterProfile[],
+    negativePrompt: string,
+    useNegativePrompt: boolean,
+    projectNiche: string,
+    styleReferenceFiles: ReferenceFile[],
+    sceneStart?: number,
+    sceneEnd?: number,
+    autoBreakdown: boolean = false,
+    targetSceneDuration: number | null = 8,
+    fullScriptContext?: string,
+    previousContext?: string, // Sliding window memory
+    globalSummary?: string,
+    nextChunk?: string,
+    previousVisualState?: any
+): { systemData: string; userData: string } => {
+    console.log("[Data Verification] characterProfiles count passed to AI Prompt:", characterProfiles?.length || 0);
+    const nicheConfig = getNicheConfig(projectNiche);
+    
+    const activeThemes = selectedThemes && selectedThemes.length > 0 ? selectedThemes : (nicheConfig?.defaultThemes || []);
+    const activeModifiers = selectedModifiers && selectedModifiers.length > 0 ? selectedModifiers : (nicheConfig?.defaultModifiers || []);
+
+    const universalCameraPalette = "Establishing Shot, Wide Angle, Drone Shot, Tracking Shot, Eye-level, Medium Shot, Over-the-Shoulder, Close-up, Extreme Close-up, Low Angle";
+    const finalCameraPalette = cameraAngle !== 'Default' ? `${cameraAngle} (User Preferred), ${universalCameraPalette}` : universalCameraPalette;
+
+    const masterCameraDirector = `
+**[MASTER CAMERA & PACING DIRECTOR]**
+**Primary Camera Palette:** [${finalCameraPalette}]
+
+**Cinematic Variety & Scene Matching:** 
+You must act as a professional cinematographer. Analyze the exact narrative context, action, and emotion of the current scene and select the most perfect camera angle from the palette (however, if the scene's action or emotion demands a different perspective not on this list, you MUST confidently invent and use the exact angle that fits best).
+- **For vast world-building, establishing settings, or historical timeline shifts:** Use Establishing Shots, Wide Angles, or Drone Shots to show scale.
+- **For dialogues, character reactions, or intimate emotional moments:** Use Medium Shots, Close-ups, or Over-the-Shoulder shots to build connection. When two characters are conversing, dynamically alternate the focus between their faces across consecutive scenes, or use Over-the-Shoulder shots to shoot from behind one character's shoulder focusing on the other, keeping both characters connected in the frame.
+- **For intense physical action, battle sequences, or running:** Use dynamic Tracking Shots, Low Angles, or Handheld Shaky Cam to convey momentum.
+- **For inspecting artifacts, tiny details, or subtle micro-motions (e.g., a tear, a glowing stone):** Use Extreme Close-up or Macro shots.
+
+**CRITICAL BAN (No Combo-Moves):** 
+You MUST choose EXACTLY ONE primary camera angle/perspective per scene. Video generation models fail when you combine multiple distinct camera movements in a single prompt. 
+- ABSOLUTELY DO NOT write complex multi-stage camera transitions (e.g., Do NOT write: "A sweeping drone shot that suddenly swoops down and zooms into a close-up of the character's face"). 
+- Pick ONE core perspective (either the drone shot OR the close-up) and stick to it for that specific scene.
+`;
+
+    const globalStoryInstruction = globalSummary
+        ? `\n\n**GLOBAL STORY THEME:**\n${globalSummary}`
+        : '';
+
+    const slidingWindowInstruction = previousContext
+        ? `\n\n**PREVIOUS SCENE VISUALLY ENDED WITH:**\n${previousContext}`
+        : '';
+        
+    const isFixedPOV = nicheConfig?.visualRules?.toLowerCase().includes("first-person pov") || nicheConfig?.visualRules?.toLowerCase().includes("fixed camera");
+
+    const povEnforcementInstruction = (isFixedPOV && previousContext) 
+        ? `\n\n**CRITICAL POV & CONTINUITY LOCK:** Based on the PREVIOUS SCENE context above, YOU MUST strictly maintain the EXACT SAME camera angle, POV, and core environment. DO NOT deviate or change locations.` 
+        : ``;
+
+    const upcomingContextInstruction = nextChunk
+        ? `\n\n**UPCOMING SCRIPT CONTEXT (WHERE THE STORY GOES NEXT):**\n${nextChunk}`
+        : '';
+        
+    const stateInheritanceInstruction = `\n\n**STRICT VISUAL STATE INHERITANCE (CRITICAL FOR CONTINUITY):**
+You will be provided with a 'PREVIOUS_VISUAL_STATE' JSON. 
+- **The Physical Continuity Test:** Before copying the previous scene's environment, ask yourself: Can the current script line happen physically at the exact same time and inside the exact same room/location as the previous scene without any camera cuts or time gaps? (e.g., Dialogue in a royal court = YES. A complaint at night, and the next line the prophet judges in the morning = NO).
+- **Smart Memory Flush:** If the answer is NO (meaning there is a time gap, change in daylight, or change in action type), even if there are no explicit keywords like 'next day' or 'a century later' in the script, you MUST select 'NEW_LOCATION' or 'TIME_JUMP' as the \`location_status\`. When this flag is triggered, completely flush/reset the PREVIOUS_VISUAL_STATE memory buffer and create a completely new environment and lighting according to the scene's demands.
+- If the answer is YES, you MUST strictly use the exact environmental details (lighting, background props, colors) from the PREVIOUS_VISUAL_STATE in your new master_prompt. Do not invent new surroundings.
+- VERY IMPORTANT: At the end of your JSON response, you MUST output a new field called \`current_visual_state\` containing a brief JSON snapshot of the scene's environment (e.g., location, style, lighting, key background props). This will be used as memory for the next chunk.
+PREVIOUS_VISUAL_STATE: ${previousVisualState ? JSON.stringify(previousVisualState) : "null"}
+
+**INTRA-ARRAY SCENE-TO-SCENE CONTINUITY (CRITICAL):**
+When generating multiple scenes within the same 'scenes' array, you MUST maintain strict environmental continuity between consecutive scenes.
+- **Intra-Array Continuity Safe Rule:** If there's immediate continuous action within the same array (e.g., opening a box, talking), continuity remains 100% intact. Scene 2 MUST inherit the exact location, environment, weather, and lighting established in Scene 1. Scene 3 must inherit from Scene 2, and so on.
+- DO NOT invent a new location (e.g., jumping from an 'alleyway' to an indoor 'room') UNLESS the Physical Continuity Test demands a transition to a new setting.`;
+
+    const styleReferenceInstruction = (styleReferenceFiles.length > 0 && autoBreakdown)
+        ? `\n\n**PHASE 0.5: VISUAL REFERENCE ANALYSIS (HIGHEST PRIORITY)**
+           - **Primary Directive:** You have been provided with Style Reference images. These images are the **ULTIMATE SOURCE OF TRUTH** for the visual style.
+           - **Your Task:** Before generating a prompt, deeply analyze the user-provided images. Identify their color palette, lighting, composition, mood, and overall aesthetic.
+           - **Execution:** Your generated 'master_prompt' for each scene MUST be heavily biased to replicate this reference style. The 'Primary Themes' and 'Artistic Modifiers' are SECONDARY to the visual information in these reference images. If there is a conflict, the reference image style ALWAYS WINS.`
+        : '';
+        
+    const characterInstruction = characterProfiles.some(p => p.name?.trim() || p.userDescription.trim() || p.aiDescription.trim()) 
+        ? `\n\n**CRITICAL RULE: CHARACTER TAGGING (MANDATORY):**
+1. Important Characters available in this project: ${characterProfiles.map((p, index) => p.name?.trim() || `Character ${index + 1}`).join(', ')} (or infer their names from the script).
+2. If a named character appears in the scene, DO NOT describe their clothing or face in the prompt.
+3. Just write their exact name tagged like {{Character: Name}} (e.g., {{Character: Zaid}} or {{Character: Layla}}) in the "master_prompt".
+4. Our client-side application will automatically inject their visual details later. Do not waste tokens describing them.`
+        : '';
+    
+    const negativeInstruction = (useNegativePrompt && negativePrompt.trim()) 
+        ? `\n\n**Negative Prompt:** The "master_prompt" MUST STRICTLY AVOID any mention or depiction of the following concepts: "${negativePrompt.trim()}".` 
+        : '';
+
+    const rangeInstruction = (sceneStart !== undefined && sceneEnd !== undefined) 
+        ? `Generate distinct scenes numbered ${sceneStart} to ${sceneEnd} (from a total of ${imageCount} scenes).`
+        : `Divide the script into exactly ${imageCount} distinct, logical scenes.`;
+
+    const countInstruction = autoBreakdown 
+        ? `**STRICT TIMING & SCENE COUNT REQUIREMENT (MINIMUM TARGET: ${imageCount} SCENES):**
+           1. **The Audio-to-Video Math:** This specific script chunk equals approximately ${imageCount * (targetSceneDuration || 8)} seconds of spoken audio. Since each generated video clip will be exactly ${targetSceneDuration || 8} seconds long, you MUST generate AT LEAST ${imageCount} distinct scenes to ensure the video correctly covers the audio length.
+           2. **NEVER COMPRESS ACTIONS:** Generating fewer than ${imageCount} scenes is a CRITICAL FAILURE. Do NOT combine multiple actions or a long paragraph into a single 8-second scene. If reading the text aloud takes 24 seconds, it MUST be broken into at least three 8-second scenes.
+           3. **Static Monologue Rule:** If the text is a long dialogue or static event without new actions, do NOT loop or repeat the exact same prompt, and do NOT compress the event. Instead, fulfill the ${imageCount} scene quota by naturally progressing the visual focus every ${targetSceneDuration || 8} seconds (e.g., "Wide shot of the speaker", then "Close up of their hands", then "B-roll cutaway of the subject matter", then "Reaction of the listener").
+           4. **Allowance:** It is acceptable to generate 1 or 2 extra scenes if the narrative requires it, but you must NEVER generate fewer than ${imageCount} scenes.`
+        : ((sceneStart !== undefined && sceneEnd !== undefined)
+            ? `You must generate exactly ${sceneEnd - sceneStart + 1} objects in the JSON array (Scenes ${sceneStart} to ${sceneEnd}).`
+            : `You must generate exactly ${imageCount} objects in the JSON array.`);
+
+    const scriptInstruction = globalSummary 
+        ? `Here is the GLOBAL STORY SUMMARY for context. Read this to understand the true narrative arc, characters, and overall atmosphere:\n---\n${globalSummary}\n---\n\nYOUR SPECIFIC TASK:\nBreak down ONLY the following specific chunk of the script into scenes:\n---\n${script}\n---`
+        : `Here is the script you must process:\n---\n${script}\n---`;
+
+    let systemData = `// ==========================================
+// 🔒 GLOBAL CORE ENGINE - SECURE ZONE 
+// STRICTLY DO NOT MODIFY OR EDIT THIS SECTION
+// ==========================================
+You are an Elite Cinematic Director, Master Storyboard Artist, and Advanced AI Video Prompt Engineer. Your task is to analyze the following script and generate a visual storyboard as a structured JSON object.
+
+**PHASE 0: STYLE DEFINITION (Project Niche: ${projectNiche})**
+You MUST adhere to the following core visual rules for this project:
+${nicheConfig.visualRules}
+${styleReferenceInstruction}
+${negativeInstruction}
+
+${masterCameraDirector}
+
+**PHASE 1: CONTEXT LOCK (CRITICAL)**
+Before generating any prompts, analyze the script to determine the **Time Period**, **Setting**, and **Technology Level**. Stay locked to the primary era unless the script explicitly changes it.
+${globalStoryInstruction}
+${slidingWindowInstruction}
+${povEnforcementInstruction}
+${upcomingContextInstruction}
+${stateInheritanceInstruction}
+
+**PHASE 2: SCENE GENERATION & THE DIRECTOR'S INTERPRETATION ENGINE (CRITICAL LOGIC)**
+For each segment of the script, you must act as a director, not a literal translator. Follow these rules:
+
+1.  **Literal vs. Figurative Rule:** Before creating a scene, ask: "Is this sentence a literal action, or is it a metaphor, an internal thought, or sarcasm?"
+
+2.  **"Show, Don't Tell" Policy:**
+    *   **If Figurative/Sarcastic (e.g., "he felt like he was on top of the world" or "you think you're walking on clouds"):** DO NOT create a literal image (e.g., a man on a globe, a person on a cloud). Instead, **SHOW THE REACTION OR EMOTION**. Create a \`scene_description\` that captures the character's *expression* (e.g., "A close-up on the man's triumphant, smiling face" or "Show the listener's annoyed and disbelieving facial expression").
+    *   **If Literal Action (e.g., "he opened the door"):** Describe the action directly and cinematically.
+
+3.  **Continuity for Dialogue & B-Rolls:**
+    *   If a script line is purely dialogue, DO NOT create a new, random scene. Instead, describe it as holding the previous shot or cutting to a simple reaction shot of the speaker/listener.
+    *   **CRITICAL B-ROLL AWARENESS:** If a character has a long dialogue, DO NOT keep the camera statically locked on their face for consecutive scenes. Instead, dynamically describe compelling **B-Roll footage (cutaways)** that are HIGHLY RELEVANT to the subject being discussed to visually reinforce the spoken words and prevent visual repetition.
+
+4.  **Character Motion & Morphing Prevention (Micro vs. Macro Scaling):** You must animate characters based on scene intimacy. NEVER leave characters standing or sitting like lifeless statues. 
+    - For dialogue, praying, thinking, or quiet scenes, use **Micro-motion** (e.g., 'subtle head tilt', 'shifting gaze', 'deep inhalation with chest rising', 'robes rustling gently in the wind', 'slight facial reaction'). Do NOT use large movements here to avoid AI video morphing.
+    - For battle, chasing, physical conflict, or action scenes, use **Macro-motion** (e.g., 'charging forward with force', 'wielding a spear aggressively', 'stumbling back in shock', 'dust swirling around rapid footsteps').
+
+${characterInstruction}
+
+**PHASE 3: JSON OUTPUT STRUCTURE**
+Before generating the master_prompt, you MUST apply the 'Physical Continuity Test' to determine the 'location_status' and write a short 'status_justification' to logically prove your decision.
+CRITICAL REMINDER FOR MASTER_PROMPT: Maintain the standard baseline of ONE primary camera angle per scene. HOWEVER, you have full creative freedom to use multi-stage camera transitions (combo-moves) ONLY IF the scene's emotional or spatial narrative strictly demands it (e.g., descending from the sky into a room).
+The final output MUST be a valid JSON object matching the following structure exactly:
+{
+  "scenes": [
+    {
+      "scene_number": 1,
+      "scene_description": "The breakdown of what is happening.",
+      "location_status": "SAME_AS_PREVIOUS or NEW_LOCATION or TIME_JUMP",
+      "status_justification": "Briefly explain the result of your Physical Continuity Test.",
+      "camera_angle": "Write the EXACT ONE primary camera angle chosen for this scene based on the MASTER CAMERA & PACING DIRECTOR rules.",
+      "characters_in_scene": ["char_1", "char_2"], // An array of strings containing ONLY the specific Character IDs that are VISUALLY PRESENT in this specific scene. If no characters are present, return an empty array [].
+      "master_prompt": "A highly detailed and structured cinematic master visual prompt."
+    }
+  ],
+  "current_visual_state": {
+    "location_type": "...",
+    "lighting_and_atmosphere": "...",
+    "key_props": "..."
+  }
+}
+
+**CRITICAL CHARACTER RULE (GLOBAL - READ CAREFULLY):**
+1. FOR NAMED/PROJECT CHARACTERS: If a character is explicitly listed in the project (e.g., Detective Roy), you MUST STRICTLY use ONLY their tag like '{{Character: Name}}'. DO NOT describe their age, gender, clothing, or facial features in the prompt. Our local system will auto-inject their profile later.
+2. FOR UNNAMED/BACKGROUND CHARACTERS: Whenever you describe a generic or unnamed character (e.g., a waiter, a crowd member, a random passerby), you MUST explicitly state their gender (Male or Female) and approximate age. NEVER use ambiguous terms like 'a person' or 'someone'.
+
+**INSTRUCTIONS:**
+1.  **Sequential Processing (CRITICAL):** You MUST process the script sequentially from beginning to end. Do not jump between sections. Each generated scene must follow the narrative order of the script.
+2.  **Scene Division:** ${autoBreakdown ? 'Follow the breakdown rule below.' : rangeInstruction} ${countInstruction}
+3.  **Style Integration:** Each "master_prompt" MUST incorporate the following style elements NATURALLY into the description:
+    -   **Primary Themes:** ${activeThemes.join(', ')}
+    -   **Artistic Modifiers:** ${activeModifiers.join(', ')}
+    -   **Aspect Ratio:** Conceptualize the image for a ${aspectRatio} aspect ratio.
+4.  **FORMATTING RULES (VERY IMPORTANT):**
+    - The "master_prompt" MUST be a **single, cohesive paragraph**.
+    - **DO NOT** use bullet points, lists, or line breaks inside the "master_prompt" string.
+    - **DO NOT** include labels like "Theme:", "Style:", etc., inside the "master_prompt". Blend everything into one visual description.`;
+
+    const characterNames = characterProfiles.map(p => p.name?.trim()).filter(Boolean).join(', ');
+    const finalCharacterLock = characterNames ? `\n\n==================================================\n**CRITICAL CHARACTER TAGGING RULE:**\nThe script features these specific main characters: [ ${characterNames} ].\n1. Whenever these characters are involved in a scene, you MUST use this exact bracket format in the image_prompt and video_prompt: {{Character: Name}}.\n2. Example: If the script mentions Roy, you MUST write {{Character: Roy}} in your prompt.\n3. NEVER replace their names with pronouns (he/she) or generic nouns (the man, the detective, the girl). You MUST use the bracketed name every single time they appear.\n==================================================` : '';
+
+    systemData += finalCharacterLock;
+
+    const userData = `**PHASE 4: TARGET SCRIPT**\n${scriptInstruction}`;
+
+    return { systemData, userData };
+};

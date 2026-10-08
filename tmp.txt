@@ -1,0 +1,344 @@
+16:    pcmToWav, splitScriptIntoMeaningfulChunks, jsonValidator, encodeArrayBufferToBase64, 
+17:    stripTimestamps, sanitizeAiGeneratedScript, detectLanguage, getDeviceId,
+29:import { VideoAnalyzerCard, ScriptAssistantCard } from './ai-assistants';
+35:import { ScriptInputSection } from './script-input-section';
+59:import { getModelSpecificPromptGenerator, injectCharacterDescriptions } from './prompt-engine';
+63:    getSafetyRephrasePrompt, getScriptToStoryboardPrompt, getVideoDeconstructionPrompt, 
+64:    getScriptSceneBreakdownPrompt, 
+65:    getIdeaToScriptPrompt, getCharacterImageAnalysisPrompt, getCharacterExtractionPrompt,
+67:    getRefineStorySuggestionsPrompt, getRefineStoryChunkPrompt, getScriptCameraAnglePrompt,
+253:    const [script, setScript] = useState(() => {
+254:        return localStorage.getItem('autosaved_script_quick_fallback') || '';
+256:    const scriptRef = useRef(script);
+258:        scriptRef.current = script; 
+259:        localStorage.setItem('autosaved_script_quick_fallback', script);
+260:    }, [script]);
+290:        if (!value && script && script.trim()) {
+291:            const wordCount = script.trim().split(/\s+/).filter(Boolean).length;
+330:    const [scriptType, setScriptType] = useState('text');
+357:    const [scriptIdea, setScriptIdea] = useState('');
+358:    const [isGeneratingScript, setIsGeneratingScript] = useState(false);
+362:    const [characterProfiles, setCharacterProfiles] = useState<CharacterProfile[]>([{ id: crypto.randomUUID(), userDescription: '', aiDescription: '', image: null }]);
+364:    const [isAnalyzingScriptContent, setIsAnalyzingScriptContent] = useState(false);
+389:    const [originalScript, setOriginalScript] = useState<string | null>(null);
+391:    const [videoPromptGenArgs, setVideoPromptGenArgs] = useState<{count?: number, scriptContent?: string, isResume?: boolean} | null>(null);
+433:        scriptSceneBreakdown: 'gemini-3.5-flash' as string,
+434:        scriptParaphrasing: 'gemini-3.5-flash' as string,
+539:    const [analyzeScriptInAutopilot, setAnalyzeScriptInAutopilot] = useState(true);
+587:        { id: 2, text: 'Analyze Script for Characters' }, 
+1019:                        effectiveModel = aiTaskModelsRef.current.scriptSceneBreakdown || 'gemini-3.5-flash';
+1021:                        effectiveModel = aiTaskModelsRef.current.scriptParaphrasing || 'gemini-3.5-flash';
+1027:                        const isComplexTask = opLower.includes('script') || opLower.includes('prompts');
+1212:    const isGlobalBusy = isLoading || isBatchGenerating || isAnalyzing || isRephrasing || isGeneratingScript || isGeneratingVideoPrompts || isGeneratingTextPrompts || veo.isGeneratingVideos || voiceover.isGeneratingAudio || voiceover.isGeneratingChunks || voiceover.isFittingScript || isAnalyzingUrl || isAnalyzingCharacter !== null || isRefiningStory || isBrainstorming || voiceover.isProcessingScript || isAnalyzingScriptContent || isTranslating;
+1386:                if (autosave && autosave.script) {
+1463:                setScript(typeof result === 'string' ? stripTimestamps(result) : '');
+1539:        setIsGeneratingScript(false);
+1544:        setIsAnalyzingScriptContent(false);
+1565:    const handleRephraseScript = async () => {
+1566:        if (!script.trim()) { showNotification("Please provide a script to work with.", true); return; }
+1568:        setOriginalScript(script); // Save original script before starting
+1570:        const operation = generateUniqueStory ? 'Generating Unique Story' : 'Paraphrasing Script';
+1574:            const language = detectLanguage(script);
+1577:                const scriptChunks = splitScriptIntoMeaningfulChunks(script, chunkSize);
+1578:                const rephrasedChunks = new Array(scriptChunks.length);
+1580:                showNotification(`${operation} started (${scriptChunks.length} parts)...`);
+1581:                setChunkProcessingProgress({ currentChunk: 0, totalChunks: scriptChunks.length, progress: 0, message: `${operation} starting...` });
+1583:                for (let i = 0; i < scriptChunks.length; i++) {
+1585:                    const currentChunk = scriptChunks[i];
+1587:                    const progressPct = Math.round(((i + 1) / scriptChunks.length) * 100);
+1588:                    setChunkProcessingProgress({ currentChunk: i + 1, totalChunks: scriptChunks.length, progress: progressPct, message: `${operation} chunk ${i + 1} of ${scriptChunks.length}... (${progressPct}%)` });
+1589:                    setPromptGenerationProgress({ current: i + 1, total: scriptChunks.length, message: `${operation} (Chunk ${i + 1}/${scriptChunks.length})...`, isStalled: false });
+1593:                        : 'This is the beginning of the script.';
+1608:                    const currentLiveScript = [...rephrasedChunks.slice(0, i + 1), ...scriptChunks.slice(i + 1)].join('\n\n');
+1609:                    setScript(currentLiveScript);
+1613:                const finalScript = sanitizeAiGeneratedScript(rephrasedChunks.join('\n\n'));
+1614:                setScript(finalScript);
+1615:                voiceover.setVoiceoverScript(finalScript);
+1620:                    ? getUniqueStoryChunkPrompt(script, "This is the entire script. Generate a new, unique story from it.", language, projectNiche)
+1621:                    : getAdvancedRephraseChunkPrompt(script, "This is the entire script. Rephrase it.", language, projectNiche);
+1623:                const finalScript = sanitizeAiGeneratedScript(result.text || script);
+1624:                setScript(finalScript);
+1625:                voiceover.setVoiceoverScript(finalScript);
+1631:                handleError(e, generateUniqueStory ? 'generate unique story' : 'rephrase script', {});
+1643:        if (!script.trim()) { showNotification("Please provide a script to refine."); return; } 
+1671:            const prompt = getRefineStorySuggestionsPrompt(script); 
+1673:            showNotification("AI is now generating specific refinement suggestions based on your script...");
+1709:        const language = detectLanguage(script);
+1713:                const chunks = splitScriptIntoMeaningfulChunks(script, chunkSize);
+1740:                const finalScript = sanitizeAiGeneratedScript(refinedParts.join("\n\n"));
+1741:                setScript(finalScript);
+1742:                voiceover.setVoiceoverScript(finalScript);
+1743:                scriptRef.current = finalScript;
+1746:                setRefineProgress({ currentChunk: 1, totalChunks: 1, progress: 50, message: `Refining entire script...` });
+1747:                setPromptGenerationProgress({ current: 0, total: 100, message: `Refining entire script...`, isStalled: false });
+1748:                const contextInstruction = "This is the entire script. Rewrite it from a fresh start based on the creative angle.";
+1749:                const prompt = getRefineStoryChunkPrompt(script, contextInstruction, suggestion.en_title, suggestion.en_roadmap, language, projectNiche);
+1751:                const result = await executeGenerativeAiTask('', prompt, `refining entire script`, undefined, toolsConfig);
+1752:                const finalScript = sanitizeAiGeneratedScript(result.text || "");
+1753:                setScript(finalScript);
+1754:                voiceover.setVoiceoverScript(finalScript);
+1755:                scriptRef.current = finalScript;
+1779:    const handleGenerate = async () => { if (!script.trim()) { showNotification("Please write or generate a script first."); return; } if (selectedThemes.length === 0) { showNotification("Please select at least one primary theme."); return; } if (selectedModifiers.length === 0) { showNotification("Please select at least one artistic modifier."); return; } setIsConfirmModalVisible(true); };
+2009:                showNotification(autoBreakdown ? `Generating prompts scene-by-scene from script...` : `Generating ${imageCountRef.current} prompts in batches...`);
+2013:                    if (scriptRef.current.length > maxChunkLength) {
+2014:                        setPromptGenerationProgress({ current: 0, total: 100, message: `Analyzing long script (chunking for scene breakdown)...`, isStalled: false });
+2015:                        const chunks = splitScriptIntoMeaningfulChunks(scriptRef.current, maxChunkLength);
+2026:                            const progressMessage = `Breaking down script chunk ${i + 1} of ${chunks.length} (Target: ~${expectedScenes} scenes)...`;
+2030:                            const { systemData, userData } = getScriptToStoryboardPrompt(chunk, expectedScenes, selectedThemesRef.current, selectedModifiersRef.current, cameraAngleRef.current.length > 0 ? cameraAngleRef.current.join(', ') : 'Default', aspectRatioRef.current, characterProfilesRef.current, negativePromptRef.current, useNegativePromptRef.current, projectNicheRef.current, referenceFilesRef.current, undefined, undefined, true, targetSceneDurationRef.current, cinematicModeEnabledRef.current, cinematicOptionsRef.current, scriptRef.current);
+2034:                            batchResults = injectCharacterDescriptions(batchResults, characterProfilesRef.current);
+2040:                        setPromptGenerationProgress({ current: 0, total: 100, message: `Analyzing script and breaking down scenes...`, isStalled: false });
+2041:                        const scriptWords = scriptRef.current.split(/\s+/).filter(w => w.trim().length > 0).length;
+2042:                        const estimatedSeconds = (scriptWords / 120) * 60;
+2046:                        const { systemData, userData } = getScriptToStoryboardPrompt(scriptRef.current, expectedScenes, selectedThemesRef.current, selectedModifiersRef.current, cameraAngleRef.current.length > 0 ? cameraAngleRef.current.join(', ') : 'Default', aspectRatioRef.current, characterProfilesRef.current, negativePromptRef.current, useNegativePromptRef.current, projectNicheRef.current, referenceFilesRef.current, undefined, undefined, true, targetSceneDurationRef.current, cinematicModeEnabledRef.current, cinematicOptionsRef.current);
+2051:                        batchResults = injectCharacterDescriptions(batchResults, characterProfilesRef.current);
+2055:                    showNotification(`Script broken down into ${allParsedResults.length} scenes!`);
+2065:                        const { systemData, userData } = getScriptToStoryboardPrompt(scriptRef.current, imageCountRef.current, selectedThemesRef.current, selectedModifiersRef.current, cameraAngleRef.current.length > 0 ? cameraAngleRef.current.join(', ') : 'Default', aspectRatioRef.current, characterProfilesRef.current, negativePromptRef.current, useNegativePromptRef.current, projectNicheRef.current, referenceFilesRef.current, sceneStart, sceneEnd, false, targetSceneDurationRef.current, cinematicModeEnabledRef.current, cinematicOptionsRef.current);
+2070:                        batchResults = injectCharacterDescriptions(batchResults, characterProfilesRef.current);
+2082:                id: `script_gen_${allParsedResults.length}`,
+2372:            if (progress > 90) message = "Finalizing script generation...";
+2383:            // STEP 1: ALWAYS perform the initial analysis for script, style, and voice.
+2384:            showNotification("Analyzing URL for script, style, and voice...");
+2394:                if (data.reconstructedScript) {
+2395:                    const scriptText = data.reconstructedScript;
+2396:                    const finalScript = sanitizeAiGeneratedScript(typeof scriptText === 'string' ? scriptText : '');
+2397:                    setScript(stripTimestamps(finalScript));
+2398:                    voiceover.setVoiceoverScript(stripTimestamps(finalScript));
+2399:                    showNotification("Script extracted successfully!");
+2434:    const handleVideoFileSelect = async (file: File, isVisualRemake: boolean, remakeType: 'long' | 'shorts' | 'hyper-detailed', framesPerBatch: number, extractScriptAndStyles: boolean, generatePromptsDirectly: boolean, extractCharacters: boolean, resumeFromSegment?: number, bypassConsistencyCheck: boolean = false) => {
+2435:        const hasEmptyProfiles = characterProfiles.length === 0 || (characterProfiles.length === 1 && !characterProfiles[0].userDescription.trim() && !characterProfiles[0].aiDescription.trim());
+2437:            setPendingVideoAnalysisArgs({ file, isVisualRemake, remakeType, framesPerBatch, extractScriptAndStyles, generatePromptsDirectly, extractCharacters, resumeFromSegment });
+2444:        showNotification(isVisualRemake && !extractScriptAndStyles ? "Visual Remake: Starting Visual-Only Analysis..." : (isVisualRemake ? "Visual Remake: Initializing Full Analysis..." : "Uploading and analyzing video..."));
+2466:            const needsGoogleUpload = (apiProvider === 'google' || (apiProvider === 'openrouter' && extractScriptAndStyles && !resumeFromSegment));
+2497:            // --- SCRIPT EXTRACTION (COMMON FOR BOTH PROVIDERS IF ENABLED) ---
+2498:            if (extractScriptAndStyles && !resumeFromSegment) {
+2499:                const forceGoogleForScript = apiProvider === 'openrouter';
+2500:                if (forceGoogleForScript && !useEnvApiKey && enabledApiKeys.length === 0) {
+2501:                    showNotification("Video/Audio analysis requires a Gemini API key for script extraction. Please add one or enable the Built-in Key.", true);
+2504:                if (forceGoogleForScript) showNotification("Using Google Gemini for script extraction (OpenRouter does not support audio)...", false);
+2512:                setPromptGenerationProgress({ current: 30, total: 100, message: "Sending to AI for script extraction...", isStalled: false });
+2513:                showNotification("AI is now analyzing the video audio to reconstruct the script...");
+2516:                    const analysisResponse = await executeGenerativeAiTask(aiTaskModelsRef.current.videoFileAnalysis, { parts: [uploadedVideoPart, { text: analysisPrompt }] }, 'video file analysis', jsonValidator, undefined, forceGoogleForScript ? 'google' : undefined);
+2520:                        showNotification("AI has finished the initial analysis. Finalizing script and styles...");
+2523:                        if (data.reconstructedScript) {
+2524:                            const finalScript = sanitizeAiGeneratedScript(data.reconstructedScript);
+2525:                            setScript(stripTimestamps(finalScript));
+2526:                            voiceover.setVoiceoverScript(stripTimestamps(finalScript));
+2527:                            showNotification("Script extracted successfully!");
+2550:            if (!isVisualRemake) return; // Stop if only script extraction was needed
+2643:                            if (extractScriptAndStyles) {
+2649:                                        // Check if character already exists by ID or description similarity
+2651:                                            p.userDescription.includes(`ID: ${c.character_id}`) || 
+2652:                                            (p.aiDescription && p.aiDescription.includes(c.visual_description.substring(0, 20)))
+2658:                                                userDescription: `Character from Video (ID: ${c.character_id})`,
+2659:                                                aiDescription: `--- AI Video Analysis ---\n${c.visual_description}`,
+2671:                                    if (newProfiles.length > 1 && newProfiles[0].userDescription === '' && newProfiles[0].aiDescription === '') {
+2679:                        } else if (isFirstChunk && extractScriptAndStyles && extractCharacters) {
+2680:                            setCharacterProfiles([{ id: crypto.randomUUID(), userDescription: '', aiDescription: '', image: null }]);
+2802:                                        scene_description: trimmedSentence,
+2827:                    scene_description: s.scene_description || 'No description provided.',
+2866:    const splitScriptIntoScenes = async (scriptText: string): Promise<SceneResult[]> => { const prompt = getScriptSceneBreakdownPrompt(scriptText, imageCount, targetSceneDuration); const result = await executeGenerativeAiTask('', prompt, 'script breakdown', jsonValidator); const responseText = result.text; const cleanedJson = extractJsonFromString(responseText); const parsedResults: { scene_description: string }[] = JSON.parse(cleanedJson).scenes; return parsedResults.map(r => ({ scene_description: r.scene_description, image_prompt: '', imageStatus: 'pending' })); };
+2868:    const triggerVideoPromptGeneration = (count?: number, scriptContent?: string, isResume?: boolean) => {
+2873:        setVideoPromptGenArgs({ count, scriptContent, isResume });
+2889:        handleGenerateVideoPrompts(args?.count, args?.scriptContent, args?.isResume).catch(e => {
+2897:    const handleGenerateVideoPrompts = async (count?: number, scriptContent?: string, isResumeAction?: boolean) => {
+2915:            const targetScript = scriptContent || scriptRef.current;
+2927:            if (!isResuming && (currentResults.length === 0 || !currentResults.some(r => r.scene_description))) {
+2928:                if (videoPromptBasisRef.current === 'script-driven' || videoPromptBasisRef.current === 'script-driven-auto') {
+2929:                    if (!targetScript.trim()) throw new Error("Please provide a script.");
+2930:                    showNotification(`Preparing scenes from script...`);
+2932:                    const isAuto = videoPromptBasisRef.current === 'script-driven-auto';
+2936:                    // Always chunk if script is too long, regardless of isAuto, to avoid token limits
+2937:                    if (targetScript.length > maxChunkLength) {
+2938:                        setPromptGenerationProgress({ current: 0, total: 100, message: `Analyzing long script (chunking for scene breakdown) for video prompts...`, isStalled: false });
+2939:                        const chunks = splitScriptIntoMeaningfulChunks(targetScript, maxChunkLength);
+2958:                                    const chunkRatio = chunk.length / targetScript.length;
+2964:                            const progressMessage = `Breaking down script chunk ${i + 1} of ${chunks.length} (Target: ~${expectedScenes} scenes) for video prompts...`;
+2968:                            const { systemData, userData } = getScriptToStoryboardPrompt(chunk, expectedScenes, [], [], '', '', [], '', false, projectNicheRef.current, [], undefined, undefined, isAuto, targetSceneDurationRef.current, cinematicModeEnabledRef.current, cinematicOptionsRef.current, targetScript);
+2969:                            const result = await executeGenerativeAiTask('', userData, `script breakdown auto chunk ${i+1}`, jsonValidator, undefined, undefined, systemData);
+2971:                            const parsedResults: { scene_description: string }[] = JSON.parse(cleanedJson).scenes;
+2973:                                scene_description: r.scene_description, image_prompt: '', video_prompt: '', imageStatus: 'pending' as const, videoPromptStatus: 'pending' as const, retryCount: 0, safetyRetryCount: 0
+2978:                        setPromptGenerationProgress({ current: 0, total: 100, message: `Analyzing script and breaking down scenes...`, isStalled: false });
+2979:                        showNotification("AI is analyzing the script to determine the best scene structure for video prompts...");
+2982:                            const scriptWords = targetScript.split(/\s+/).filter(w => w.trim().length > 0).length;
+2983:                            const estimatedSeconds = (scriptWords / 120) * 60;
+2987:                        const { systemData, userData } = getScriptToStoryboardPrompt(targetScript, finalTargetCount, [], [], '', '', [], '', false, projectNicheRef.current, [], undefined, undefined, isAuto, targetSceneDurationRef.current, cinematicModeEnabledRef.current, cinematicOptionsRef.current);
+2988:                        const result = await executeGenerativeAiTask('', userData, 'script breakdown', jsonValidator, undefined, undefined, systemData);
+2991:                        const parsedResults: { scene_description: string }[] = JSON.parse(cleanedJson).scenes;
+2994:                            scene_description: r.scene_description, image_prompt: '', video_prompt: '', imageStatus: 'pending', videoPromptStatus: 'pending', retryCount: 0, safetyRetryCount: 0
+3001:                    showNotification(`Script breakdown complete! ${newScenes.length} scenes identified for video prompt generation.`);
+3003:                    throw new Error("Please generate images first for image-driven basis, or use Script-Driven mode.");
+3100:                                     if(profile.aiDescription) fullDetails += profile.aiDescription.trim();
+3101:                                     if(profile.userDescription) fullDetails += (fullDetails ? ", " : "") + profile.userDescription.trim();
+3216:    const handleGenerateOnlyPrompts = async (count: number, scriptContent?: string) => { 
+3217:        const scriptToUse = scriptContent || scriptRef.current; 
+3218:        if (!scriptToUse.trim()) { 
+3219:            showNotification("Please provide a script to generate prompts."); 
+3235:                 if (scriptToUse.length > maxChunkLength) {
+3236:                     setPromptGenerationProgress({ current: 0, total: 100, message: `Analyzing long script (chunking for scene breakdown)...`, isStalled: false });
+3237:                     const chunks = splitScriptIntoMeaningfulChunks(scriptToUse, maxChunkLength);
+3249:                         const progressMessage = `Breaking down script chunk ${i + 1} of ${chunks.length} (Target: ~${expectedScenes} scenes)...`;
+3253:                         const { systemData, userData } = getScriptToStoryboardPrompt(chunk, expectedScenes, selectedThemesRef.current, selectedModifiersRef.current, cameraAngleRef.current.length > 0 ? cameraAngleRef.current.join(', ') : 'Default', aspectRatioRef.current, characterProfilesRef.current, negativePromptRef.current, useNegativePromptRef.current, projectNicheRef.current, referenceFilesRef.current, undefined, undefined, true, targetSceneDurationRef.current, cinematicModeEnabledRef.current, cinematicOptionsRef.current, scriptToUse);
+3257:                         batchResults = injectCharacterDescriptions(batchResults, characterProfilesRef.current);
+3263:                     setPromptGenerationProgress({ current: 0, total: 100, message: `Analyzing script and breaking down into scenes...`, isStalled: false });
+3264:                     showNotification("AI is analyzing the script to determine the best scene structure...");
+3265:                     const scriptWords = scriptToUse.split(/\s+/).filter(w => w.trim().length > 0).length;
+3266:                     const estimatedSeconds = (scriptWords / 120) * 60;
+3270:                     const { systemData, userData } = getScriptToStoryboardPrompt(scriptToUse, expectedScenes, selectedThemesRef.current, selectedModifiersRef.current, cameraAngleRef.current.length > 0 ? cameraAngleRef.current.join(', ') : 'Default', aspectRatioRef.current, characterProfilesRef.current, negativePromptRef.current, useNegativePromptRef.current, projectNicheRef.current, referenceFilesRef.current, undefined, undefined, true, targetSceneDurationRef.current, cinematicModeEnabledRef.current, cinematicOptionsRef.current);
+3275:                     batchResults = injectCharacterDescriptions(batchResults, characterProfilesRef.current);
+3297:                    const { systemData, userData } = getScriptToStoryboardPrompt(scriptToUse, count, selectedThemesRef.current, selectedModifiersRef.current, cameraAngleRef.current.length > 0 ? cameraAngleRef.current.join(', ') : 'Default', aspectRatioRef.current, characterProfilesRef.current, negativePromptRef.current, useNegativePromptRef.current, projectNicheRef.current, referenceFilesRef.current, sceneStart, sceneEnd, false, targetSceneDurationRef.current, cinematicModeEnabledRef.current, cinematicOptionsRef.current); 
+3302:                    batchResults = injectCharacterDescriptions(batchResults, characterProfilesRef.current);
+3329:    const handleDownloadCombinedPrompts = () => { const currentResults = resultsRef.current; if (currentResults.length === 0) { showNotification("No prompts to export."); return; } let content = `Project: ${projectName}\n\n--- COMBINED PROMPTS ---\n\n`; currentResults.forEach((result, index) => { content += `SCENE ${index + 1}\n`; content += `Description: ${result.scene_description}\n`; content += `Image Prompt: ${result.image_prompt}\n`; if (result.video_prompt) { content += `Video Prompt: ${result.video_prompt}\n`; } content += '--------------------------------------------------\n\n'; }); const blob = new Blob([content], { type: 'text/plain;charset=utf-8' }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = `${projectName.replace(/\s+/g, '_')}_combined_prompts.txt`; document.body.appendChild(link); link.click(); document.body.removeChild(link); showNotification("Combined prompts exported."); };
+3356:            showNotification("No scenes available to generate. Please create/generate a story or script first.", true);
+3462:        projectName, script, results, videoDuration, videoDurationSec, imageCount, aspectRatio, selectedThemes, selectedModifiers, cameraAngle, scriptType, fileName, characterProfiles, videoModel, videoPromptBasis, includeDialogue, includeAmbient, includeSfx, stylePresets, projectNiche, autoBreakdown, targetSceneDuration, apiProvider, openRouterImageModel, openRouterTextModel, openRouterModelMode, cinematicModeEnabled, cinematicOptions, autoSaveEnabled
+3467:            projectName, script, results, videoDuration, videoDurationSec, imageCount, aspectRatio, selectedThemes, selectedModifiers, cameraAngle, scriptType, fileName, characterProfiles, videoModel, videoPromptBasis, includeDialogue, includeAmbient, includeSfx, stylePresets, projectNiche, autoBreakdown, targetSceneDuration, apiProvider, openRouterImageModel, openRouterTextModel, openRouterModelMode, cinematicModeEnabled, cinematicOptions, autoSaveEnabled
+3470:    }, [projectName, script, results, videoDuration, videoDurationSec, imageCount, aspectRatio, selectedThemes, selectedModifiers, cameraAngle, scriptType, fileName, characterProfiles, videoModel, videoPromptBasis, includeDialogue, includeAmbient, includeSfx, stylePresets, projectNiche, autoBreakdown, targetSceneDuration, apiProvider, openRouterImageModel, openRouterTextModel, openRouterModelMode, cinematicModeEnabled, cinematicOptions, autoSaveEnabled]);
+3476:            if (currentData.script.trim() || currentData.results.length > 0) {
+3480:                        script: currentData.script,
+3489:                        scriptType: currentData.scriptType,
+3493:                            userDescription: p.userDescription,
+3494:                            aiDescription: p.aiDescription,
+3529:        localStorage.removeItem('autosaved_script_quick_fallback');
+3533:        setScript('');
+3544:        setCharacterProfiles([{ id: crypto.randomUUID(), userDescription: '', aiDescription: '', image: null }]);
+3549:        voiceover.setVoiceoverScript('');
+3573:                script, 
+3582:                scriptType, 
+3587:                    userDescription: p.userDescription, 
+3588:                    aiDescription: p.aiDescription, 
+3598:                voiceoverScript: voiceover.voiceoverScript,
+3646:            const loadedScript = projectData.script;
+3647:            const finalScript = typeof loadedScript === 'string' ? stripTimestamps(loadedScript) : '';
+3648:            setScript(finalScript);
+3650:            if (projectData.voiceoverScript) {
+3651:                const loadedVoScript = projectData.voiceoverScript;
+3652:                voiceover.setVoiceoverScript(typeof loadedVoScript === 'string' ? stripTimestamps(loadedVoScript) : '');
+3654:                voiceover.setVoiceoverScript(finalScript);
+3657:            // Very careful about script during auto-load
+3658:            const loadedScript = projectData.script;
+3659:            const finalScript = typeof loadedScript === 'string' ? stripTimestamps(loadedScript) : '';
+3660:            if (!scriptRef.current.trim() && finalScript.trim()) {
+3661:                setScript(finalScript);
+3663:            // Same for voiceover script
+3664:            const loadedVoScript = projectData.voiceoverScript || finalScript;
+3665:            const finalVoScript = typeof loadedVoScript === 'string' ? stripTimestamps(loadedVoScript) : '';
+3666:            if (!voiceover.voiceoverScript.trim() && finalVoScript.trim()) {
+3667:                voiceover.setVoiceoverScript(finalVoScript);
+3747:        setScriptType(projectData.scriptType || 'text'); 
+3752:        const loadedCharProfiles: CharacterProfile[] = (projectData.characterProfiles || [{ userDescription: '', aiDescription: '', image: null }]).map((p: any) => ({ 
+3754:            userDescription: p.userDescription, 
+3755:            aiDescription: p.aiDescription, 
+3758:        setCharacterProfiles(loadedCharProfiles.length > 0 ? loadedCharProfiles : [{ id: crypto.randomUUID(), userDescription: '', aiDescription: '', image: null }]); 
+3879:    const handleGenerateScript = async (duration: string) => {  
+3880:        if (!scriptIdea.trim()) { 
+3881:            handleError({ message: "Please enter a story idea first."}, "Generate Script", {}); return; } 
+3882:        setIsGeneratingScript(true); 
+3884:        showNotification("Generating script from your idea... Est. time: ~45s"); 
+3894:            if (progress > 5) message = "Initializing script generation...";
+3897:            if (progress > 45) message = "Drafting script content and scenes...";
+3900:            if (progress > 85) message = "Finalizing script and formatting...";
+3911:            const prompt = getIdeaToScriptPrompt(scriptIdea, imageCount, duration, projectNiche); 
+3913:            const result = await executeGenerativeAiTask('', prompt, 'generate script', undefined, toolsConfig); 
+3914:            const newScript = result.text; 
+3915:            if (newScript) { 
+3916:                const finalScript = sanitizeAiGeneratedScript(newScript);
+3917:                setScript(finalScript); 
+3918:                showNotification("Script generated successfully!"); 
+3920:                throw new Error("AI failed to return a script."); 
+3924:                handleError(e, 'generate script', {}); 
+3927:            setIsGeneratingScript(false); 
+3949:            if (progress > 75) message = "Generating character description...";
+3965:            const description = response.text; 
+3966:            if (description) { 
+3967:                setCharacterProfiles(prev => prev.map(p => p.id === characterId ? { ...p, aiDescription: `\n\n--- AI Analysis from Image ---\n${description}` } : p)); 
+3986:    const handleAnalyzeScript = async (options: { extractCharacters: boolean; configureVoice: boolean; genderPreference?: 'any' | 'male' | 'female', keepExistingVoice?: boolean } = { extractCharacters: true, configureVoice: true, genderPreference: 'any', keepExistingVoice: false }) => { 
+3987:        if (!scriptRef.current.trim()) { showNotification("Please provide a script to analyze."); return; } 
+3988:        setIsAnalyzingScriptContent(true); 
+3990:        showNotification("Analyzing script content... Est. time: ~30s"); 
+4009:                setPromptGenerationProgress({ current: 5, total: 100, message: "Extracting characters from script...", isStalled: false });
+4011:                const prompt = getCharacterExtractionPrompt(scriptRef.current); 
+4012:                const result = await executeGenerativeAiTask('', prompt, 'analyze script characters', jsonValidator); 
+4018:                    const analysisHeader = "\n\n--- AI Script Analysis ---\n"; 
+4019:                    const newProfiles = parsedData.characters.map((c: { name: string, description: string }) => ({ id: crypto.randomUUID(), userDescription: `Name: ${c.name}`, aiDescription: `${analysisHeader}Description: ${c.description}`, image: null })); 
+4021:                    showNotification(`Script analyzed! ${newProfiles.length} character profiles created.`); 
+4024:                    setCharacterProfiles([{ id: crypto.randomUUID(), userDescription: '', aiDescription: '', image: null }]); 
+4037:                const anglePrompt = getScriptCameraAnglePrompt(scriptRef.current);
+4068:                await voiceover.autoConfigureVoiceover(scriptRef.current, options.genderPreference, options.keepExistingVoice); 
+4071:            showNotification("Script analysis complete!");
+4074:                handleError(e, 'analyze script', {}); 
+4076:            setIsAnalyzingScriptContent(false); 
+4081:    const handleAddCharacter = () => { setCharacterProfiles(prev => [...prev, { id: crypto.randomUUID(), userDescription: '', aiDescription: '', image: null }]); }; 
+4082:    const handleRemoveCharacter = (id: string) => { setCharacterProfiles(prev => prev.length > 1 ? prev.filter(p => p.id !== id) : [{ id: crypto.randomUUID(), userDescription: '', aiDescription: '', image: null }]); }; 
+4083:    const handleCharacterDescriptionChange = (id: string, value: string) => { setCharacterProfiles(prev => prev.map(p => p.id === id ? { ...p, userDescription: value } : p)); };
+4084:    const handleCharacterAiDescriptionChange = (id: string, value: string) => { setCharacterProfiles(prev => prev.map(p => p.id === id ? { ...p, aiDescription: value } : p)); };
+4113:        const savedScript = script; // Preserve whatever was just pasted or typed
+4115:        // Restore the script after clearing if it was a paste
+4117:            if (savedScript) {
+4118:                setScript(savedScript);
+4139:    const handleTranslateScript = async (targetLanguage: 'English' | 'Bengali' | 'Hindi') => {
+4140:        if (!script.trim()) {
+4141:            showNotification("No script to translate.");
+4145:        setOriginalScript(script); // Save original script before starting
+4153:                const scriptChunks = splitScriptIntoMeaningfulChunks(script, chunkSize);
+4154:                const translatedChunks = new Array(scriptChunks.length);
+4155:                showNotification(`Translating in ${scriptChunks.length} chunks...`);
+4156:                setChunkProcessingProgress({ currentChunk: 0, totalChunks: scriptChunks.length, progress: 0, message: `${operation} starting...` });
+4158:                for (let i = 0; i < scriptChunks.length; i++) {
+4161:                    const progressPct = Math.round(((i + 1) / scriptChunks.length) * 100);
+4162:                    setChunkProcessingProgress({ currentChunk: i + 1, totalChunks: scriptChunks.length, progress: progressPct, message: `${operation} chunk ${i + 1} of ${scriptChunks.length}... (${progressPct}%)` });
+4163:                    setPromptGenerationProgress({ current: i + 1, total: scriptChunks.length, message: `${operation} (Chunk ${i + 1}/${scriptChunks.length})...`, isStalled: false });
+4167:                        : 'This is the first part of the script.';
+4169:                    const prompt = getTranslationPrompt(scriptChunks[i], targetLanguage, contextInstruction);
+4177:                    const currentLiveScript = [...translatedChunks.slice(0, i + 1), ...scriptChunks.slice(i + 1)].join('\n\n');
+4178:                    setScript(currentLiveScript);
+4182:                const finalScript = sanitizeAiGeneratedScript(translatedChunks.join('\n\n'));
+4183:                setScript(finalScript);
+4184:                voiceover.setVoiceoverScript(finalScript);
+4186:                const prompt = getTranslationPrompt(script, targetLanguage);
+4188:                const translatedScript = result.text;
+4189:                if (translatedScript) {
+4190:                    const sanitized = sanitizeAiGeneratedScript(translatedScript);
+4191:                    setScript(sanitized);
+4192:                    voiceover.setVoiceoverScript(sanitized);
+4197:            showNotification("Script translated successfully!");
+4200:                handleError(e, 'translate script', {});
+4210:        { id: 1, text: 'Refine Story / Rephrase...', enabled: () => (refineStoryInAutopilot || rephraseInAutopilot || generateUniqueStory), task: async () => { if (refineStoryInAutopilot) { showNotification("Autopilot: Generating Refine Suggestions..."); const language = detectLanguage(scriptRef.current); const prompt = getRefineStorySuggestionsPrompt(scriptRef.current); const toolsConfig = apiProvider === 'google' ? { tools: [{ googleSearch: {} }] } : undefined; const result = await executeGenerativeAiTask('', prompt, 'generating suggestions', jsonValidator, toolsConfig); const responseText = result.text; const cleanedJson = extractJsonFromString(responseText); const parsedData = JSON.parse(cleanedJson).suggestions; if (parsedData && parsedData.length > 0) { setStorySuggestions(parsedData); setIsRefineModalVisible(true); autopilotPausedForRefineRef.current = true; setIsAutopilotModalVisible(false); throw new Error("PAUSED_FOR_USER_INPUT"); } else { throw new Error("Autopilot failed to generate story suggestions."); } } else { await handleRephraseScript(); } } },
+4211:        { id: 2, text: 'Analyze Script for Characters', enabled: () => analyzeScriptInAutopilot, task: () => handleAnalyzeScript({ extractCharacters: true, configureVoice: false }) },
+4212:        { id: 3, text: 'Auto-Configure Voiceover', enabled: () => useAiToAutoConfigureVoiceover, task: () => voiceover.autoConfigureVoiceover(scriptRef.current, autopilotVoiceGender, !useUserSelectedVoiceInAutopilot) },
+4216:                await handleGenerateVideoPrompts(imageCount, scriptRef.current);
+4225:    const handleOpenAutopilotModal = () => { if (!script.trim()) { showNotification("Please provide a script before starting the Autopilot."); return; } if (generateUniqueStory) { setRephraseInAutopilot(true); } setIsAutopilotModalVisible(true); if (!autopilotProgress || autopilotCompleted || (autopilotProgress && autopilotProgress.isError && autopilotProgress.stepId !== 4 && autopilotProgress.stepId !== 7)) { autopilotStopRef.current = false; autopilotPauseRef.current = false; setIsAutopilotPaused(false); setAutopilotProgress(null); setAutopilotCompleted(false); setAutopilotElapsedTime(0); } };
+4240:            const { file, isVisualRemake, remakeType, framesPerBatch, extractScriptAndStyles, generatePromptsDirectly, extractCharacters, resumeFromSegment } = pendingVideoAnalysisArgs;
+4241:            handleVideoFileSelect(file, isVisualRemake, remakeType, framesPerBatch, extractScriptAndStyles, generatePromptsDirectly, extractCharacters, resumeFromSegment);
+4249:            const { file, isVisualRemake, remakeType, framesPerBatch, extractScriptAndStyles, generatePromptsDirectly, extractCharacters, resumeFromSegment } = pendingVideoAnalysisArgs;
+4250:            handleVideoFileSelect(file, isVisualRemake, remakeType, framesPerBatch, extractScriptAndStyles, generatePromptsDirectly, extractCharacters, resumeFromSegment, true);
+4255:    // Left for future expansion if we need to show a tip when large scripts are pasted
+4256:    const handleScriptPaste = (pastedText: string) => {
+4316:                    isAutoMode={videoPromptBasis === 'script-driven-auto'}
+4329:                    isAutoMode={videoPromptBasis === 'script-driven-auto'}
+4366:            <AutopilotModal isVisible={isAutopilotModalVisible} onClose={() => setIsAutopilotModalVisible(false)} autopilotProgress={autopilotProgress} autopilotCompleted={autopilotCompleted} autopilotElapsedTime={autopilotElapsedTime} autopilotSteps={autopilotSteps} generateUniqueStory={generateUniqueStory} rephraseInAutopilot={rephraseInAutopilot} setRephraseInAutopilot={setRephraseInAutopilot} refineStoryInAutopilot={refineStoryInAutopilot} setRefineStoryInAutopilot={setRefineStoryInAutopilot} analyzeScriptInAutopilot={analyzeScriptInAutopilot} setAnalyzeScriptInAutopilot={setAnalyzeScriptInAutopilot} useAiToAutoConfigureVoiceover={useAiToAutoConfigureVoiceover} setUseAiToAutoConfigureVoiceover={setUseAiToAutoConfigureVoiceover} useUserSelectedVoiceInAutopilot={useUserSelectedVoiceInAutopilot} setUseUserSelectedVoiceInAutopilot={setUseUserSelectedVoiceInAutopilot} autopilotVoiceGender={autopilotVoiceGender} setAutopilotVoiceGender={setAutopilotVoiceGender} isAutopilotPaused={isAutopilotPaused} onStart={() => runAutopilotSteps(1)} onStop={handleStopAutopilot} onPauseResume={handlePauseResumeAutopilot} onSkip={handleSkipAutopilotStage} onRetry={handleRetryAutopilotStage} onReset={handleResetAutopilot} />
+4370:                <NavUnit onOpenAutopilot={handleOpenAutopilotModal} isAutopilotDisabled={!script.trim()} onScrollToNotifications={() => notificationLogRef.current?.scrollIntoView({ behavior: 'smooth' })} onScrollToErrors={() => errorLogRef.current?.scrollIntoView({ behavior: 'smooth' })} theme={theme} setTheme={setTheme} palette={palette} setPalette={setPalette} />
+4407:                        <ScriptAssistantCard scriptIdea={scriptIdea} setScriptIdea={setScriptIdea} isGeneratingScript={isGeneratingScript} onGenerate={handleGenerateScript} onStop={() => stopGenerationRef.current = true} />
+4409:                        <ScriptInputSection 
+4410:                            script={script} setScript={setScript} scriptType={scriptType} fileInputRef={fileInputRef} handleFileChange={handleFileChange} fileName={fileName} 
+4411:                            generateUniqueStory={generateUniqueStory} setGenerateUniqueStory={setGenerateUniqueStory} isRephrasing={isRephrasing} handleRephraseScript={handleRephraseScript} 
+4412:                            isAnalyzingScriptContent={isAnalyzingScriptContent} handleAnalyzeScript={handleAnalyzeScript} onStop={handleStopGeneration} 
+4414:                            extractCharacters={analyzeScriptInAutopilot} setExtractCharacters={setAnalyzeScriptInAutopilot} 
+4417:                            onTranslateScript={handleTranslateScript} isTranslating={isTranslating}
+4421:                            originalScript={originalScript}
+4422:                            onScriptPaste={handleScriptPaste}
+4423:                            isOptionsGlowActive={(script && script.trim().length > 0) || isVisualRemakeMode}
+4444:                            isOptionsGlowActive={(script && script.trim().length > 0) || isVisualRemakeMode}
+4448:                        <CharacterManager characterProfiles={characterProfiles} handleAddCharacter={handleAddCharacter} handleRemoveCharacter={handleRemoveCharacter} handleCharacterDescriptionChange={handleCharacterDescriptionChange} handleCharacterAiDescriptionChange={handleCharacterAiDescriptionChange} handleSetCharacterProfiles={setCharacterProfiles} isDraggingChar={isDraggingChar} handleDragOver={(e, id) => { e.preventDefault(); setIsDraggingRef(true); setIsDraggingChar(id); }} handleDragLeave={() => { setIsDraggingRef(false); setIsDraggingChar(null); }} handleDrop={(e, id) => handleCharacterImageDrop(e, id)} handlePaste={(e, id) => handleCharacterImagePaste(e, id)} characterImageInputRefs={characterImageInputRefs} handleImageUpload={handleCharacterImageUpload} isAnalyzingCharacter={isAnalyzingCharacter} onStop={handleStopGeneration} />
+4461:                            isOptionsGlowActive={(script && script.trim().length > 0) || isVisualRemakeMode} 
+4463:                        <MainActionsCard isAutopilot={isAutopilot} setIsAutopilot={setIsAutopilot} isPausedByCircuitBreaker={isPausedByCircuitBreaker} handleResumeFromCircuitBreaker={handleResumeFromCircuitBreaker} isLoading={isLoading} isBatchGenerating={isBatchGenerating} handleStopGeneration={handleStopGeneration} handleGenerate={handleGenerate} isRephrasing={isRephrasing} isGeneratingScript={isGeneratingScript} isAnalyzing={isAnalyzing} results={results} handleRetryFailed={handleRetryFailed} isRetrying={isRetrying} />
+4480:                        <VideoPromptSettings videoModel={videoModel} setVideoModel={setVideoModel} videoPromptBasis={videoPromptBasis} setVideoPromptBasis={setVideoPromptBasis} includeDialogue={includeDialogue} setIncludeDialogue={setIncludeDialogue} includeAmbient={includeAmbient} setIncludeAmbient={setIncludeAmbient} includeSfx={includeSfx} setIncludeSfx={setIncludeSfx} isGeneratingVideoPrompts={isGeneratingVideoPrompts} onStop={() => stopGenerationRef.current = true} onGenerate={triggerVideoPromptGeneration} results={results} script={script} handleExportPrompts={handleExportPrompts} handleGenerateOnlyPrompts={handleGenerateOnlyPrompts} imageCount={imageCount} handleDownloadVideoPrompts={handleDownloadVideoPrompts} handleDownloadCombinedPrompts={handleDownloadCombinedPrompts} isVideoPromptsGenerated={isVideoPromptsGenerated} isGeneratingTextPrompts={isGeneratingTextPrompts} onResetVideoPrompts={handleResetVideoPrompts} setImageCount={setImageCount} isOptionsGlowActive={(script && script.trim().length > 0) || isVisualRemakeMode} />
+4483:                            voiceoverScript={voiceover.voiceoverScript} 
+4484:                            setVoiceoverScript={voiceover.setVoiceoverScript} 
+4485:                            script={script} 
+4488:                            wordCount={voiceover.voiceoverScript.trim().split(/\s+/).filter(Boolean).length} 
+4490:                            estimatedSeconds={Math.ceil((voiceover.voiceoverScript.trim().split(/\s+/).filter(Boolean).length / 120) * 60)} 
+4492:                            handleFitScriptToDuration={voiceover.handleFitScriptToDuration} 
+4493:                            isFittingScript={voiceover.isFittingScript} 
+4521:                            onProcessScript={voiceover.handleProcessScript} 
+4522:                            isProcessingScript={voiceover.isProcessingScript} 
+4523:                            onExportCleanScript={voiceover.handleExportCleanScript} 
+4524:                            isScriptProcessed={voiceover.isScriptProcessed}

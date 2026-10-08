@@ -1,0 +1,22 @@
+            }
+
+            const masterPrompt = `You are an expert AI video generation prompt engineer.
+Your task is to take a chronological sequence of cinematic scene descriptions (which detail visual actions, camera movements, and audio cues) and synthesize them into ONE highly detailed, fluid Video Generation Prompt.
+
+**PROJECT NICHE & STYLE RULES:**
+You MUST ensure the final prompt adheres to this project's visual style:
+${nicheConfig ? nicheConfig.visualRules : "No specific visual rules."}
+
+**SYNTHESIS RULES:**
+1. **Flow & Continuity:** Blend the individual scene descriptions into a single, continuous narrative paragraph. Do not just list them. Ensure physical continuity between actions.
+2. **Detail Retention:** Keep the specific camera movements (pans, tilts, tracking), physical actions, and character details mentioned in the input scenes.
+${audioInferenceRule ? `3. ${audioInferenceRule}\n` : ''}
+**FINAL TASK & OUTPUT FORMAT:**
+Synthesize the following scene descriptions into ONE fluid video generation prompt. 
+- Your response MUST be ONLY the final synthesized paragraph. 
+- DO NOT use intros, labels, bullet points, or scene numbers.
+
+**SCENE DESCRIPTIONS TO SYNTHESIZE:**
+${sceneDescription}
+${visualReference}
+${lightingDescription}

@@ -1,0 +1,84 @@
+export const visualAnalysisModels = [
+    { id: "google/gemma-4-31b-it:free", label: "Google: Gemma 4 31B (Free)", appFunction: "Visual Storyboard Generation, Deep Image Analysis", details: "[প্যারামিটার: 31B | কনটেক্সট: 262K] গুগলের লেটেস্ট মাল্টিমোডাল মডেল। স্ক্রিনশট ও ডেসক্রিপশন অনুযায়ী এটি টেক্সট এবং ইমেজ দুটোই সাপোর্ট করে। ২ লাখেরও বেশি মেমরি থাকায় বড় ভিডিও অ্যানালাইসিস এবং লজিক্যাল প্রম্পট তৈরির জন্য এটি খুবই শক্তিশালী একটি ফ্রি অপশন।" },
+    { id: "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free", label: "NVIDIA: Nemotron 3 Nano Omni (Free)", appFunction: "Advanced Frame Analysis, Reasoning", details: "[প্যারামিটার: 30B | কনটেক্সট: 256K] এটি মাল্টিমোডাল রিজনিং মডেল যা একই সাথে অত্যন্ত ফাস্ট এবং বিশাল মেমোরি সাপোর্ট করে।" },
+    { id: "nvidia/nemotron-nano-12b-v2-vl:free", label: "NVIDIA: Nemotron Nano 12B 2 VL (Free)", appFunction: "Video Remake, Extract Script & Styles, Generate Detailed Prompts", details: "[প্যারামিটার: 12B | কনটেক্সট: 128K] এটি ভিডিও এবং ডকুমেন্ট অ্যানালাইসিসের জন্য স্পেশালিস্ট। এর বিশাল ১২৮কে মেমোরি অনেকগুলো ফ্রেম একসাথে মনে রাখতে পারে। এটি অপটিক্যাল ক্যারেক্টার রেকগনিশন (OCR) এবং চার্ট বোঝার জন্য বিশেষভাবে অপ্টিমাইজড।" },
+    { id: "allenai/molmo-2-8b", label: "AllenAI: Molmo2 8B", appFunction: "Video Remake, Scene-by-Scene Analysis, Generate Detailed Prompts", details: "[প্যারামিটার: 8B | কনটেক্সট: ~37K] এটি Qwen3-8B এর উপর ভিত্তি করে তৈরি এবং ভিশন ব্যাকবোন হিসেবে SigLIP 2 ব্যবহার করে। ছোট ভিডিও, গণনা (Counting) এবং ক্যাপশনিং-এর ক্ষেত্রে এটি অন্যান্য ওপেন মডেলের চেয়ে ভালো পারফর্ম করে।" },
+    { id: "mistralai/mistral-small-3.1-24b-instruct", label: "Mistral: Small 3.1 24B", appFunction: "Logical Scene Understanding", details: "[প্যারামিটার: 24B | কনটেক্সট: 128K] ২৪ বিলিয়ন প্যারামিটারের এই মডেলটি ভিশন এবং লজিক্যাল রিজনিংয়ের জন্য খুব শক্তিশালী। এটি জটিল ইমেজ ডকুমেন্ট এবং ম্যাথমেটিক্যাল রিজনিংয়ের জন্য ভালো কাজ করে।" },
+    { id: "google/gemma-3-27b-it", label: "Google: Gemma 3 27B", appFunction: "Visual Storyboard Generation, Multilingual Scene Description, Bangla Output", details: "[প্যারামিটার: 27B | কনটেক্সট: 128K] গুগলের লেটেস্ট এবং এই সিরিজের সবচেয়ে শক্তিশালী ওপেন সোর্স মডেল। এটি ১৪০টিরও বেশি ভাষা বোঝে। উন্নত গণিত, রিজনিং এবং ফাংশন কলিংয়ের সক্ষমতা রয়েছে। এটি ভিশন-ল্যাঙ্গুয়েজ ইনপুট এবং স্ট্রাকচারড আউটপুট (যেমন JSON) দিতে পারে।" },
+];
+
+export const storyModels = [
+    { id: "nvidia/nemotron-3-super-120b-a12b:free", label: "NVIDIA: Nemotron 3 Super 120B (Free)", appFunction: "Advanced Reasoning, Complex Multi-agent Tasks, Fast Story Generation", details: "[প্যারামিটার: 120B (MoE) | কনটেক্সট: 262K] এটি অত্যন্ত শক্তিশালী একটি মডেল যা 1M টোকেন কনটেক্সট উইন্ডো सपोर्ट করে। এটি বিশাল ডকুমেন্ট বা স্ক্রিপ্ট নিয়ে লজিক্যাল রিজনিং এবং প্লট প্ল্যানিংয়ের জন্য খুব ভালো।" },
+    { id: "google/gemma-4-31b-it:free", label: "Google: Gemma 4 31B (Free)", appFunction: "Advanced Reasoning, Multilingual Storytelling", details: "[প্যারামিটার: 31B | কনটেক্সট: 262K] গুগলের এই লেটেস্ট ফ্রি মডেলটিতে 262K কনটেক্সট উইন্ডো এবং থিংকিং/রিজনিং মোড রয়েছে। অনেক বড় স্ক্রিপ্ট এনালাইজ করে কনসিস্টেন্ট প্রম্পট বা গল্প লিখতে এটি দারুণ কাজ করবে।" },
+    { id: "tencent/hy3-preview:free", label: "Tencent: Hy3 Preview (Free)", appFunction: "High-efficiency MoE, Reasoning, Coding", details: "[প্যারামিটার: High (MoE) | কনটেক্সট: 262K] এটি টেনসেন্ট-এর অত্যন্ত শক্তিশালী একটি মডেল যা কনফিগারযোগ্য রিজনিং এবং জটিল কোডিং বা স্ট্রাকচারড কাজের জন্য বেশ ফাস্ট।" },
+    { id: "qwen/qwen3-next-80b-a3b-instruct:free", label: "Qwen: Qwen3 Next 80B A3B Instruct (Free)", appFunction: "Advanced Story Structuring, Long Context Analysis", details: "[প্যারামিটার: 80B | কনটেক্সট: 262K] এর ২৬২কে (262K) বিশাল কনটেক্সট উইন্ডো আছে। যদি আপনার স্ক্রিপ্ট অনেক বড় হয় এবং সেটা এনালাইজ করে নতুন কিছু লিখতে হয়, তবে এটি ব্যবহার করবেন।" },
+    { id: "meta-llama/llama-3.3-70b-instruct:free", label: "Meta: Llama 3.3 70B Instruct (Free)", appFunction: "Balanced Story Generation, Fast Creative Rephrasing", details: "[প্যারামিটার: 70B | কনটেক্সট: 131K] এটি 405B এর চেয়ে Fast (দ্রুত) কিন্তু সৃজনশীলতায় খুব কাছাকাছি। যদি 405B স্লো কাজ করে, তবে ব্যালেন্সড ক্রিয়েটিভ আউটপুটের জন্য এটি সেরা ব্যাকআপ অপশন।" },
+    { id: "openai/gpt-oss-20b:free", label: "OpenAI: gpt-oss-20b (Free)", appFunction: "Basic Writing, Legacy Tasks", details: "[প্যারামিটার: 21B | কনটেক্সট: 131K] ওপেনএআই-এর রিলিজ করা ওপেন ওয়েট মডেল (MoE)। এটি ফাস্ট এবং সাধারণ লেখার জন্য বেশ কার্যকর।" },
+    { id: "nousresearch/hermes-3-llama-3.1-405b:free", label: "Nous: Hermes 3 405B Instruct (Free)", appFunction: "Idea to Story, Creative Script Writing, Uncensored Creativity", details: "[প্যারামিটার: 405B | কনটেক্সট: 131K] শূন্য থেকে গল্প বানানোর জন্য এটি Llama-র চেয়ে বেশি শক্তিশালী কারণ এটি আনসেন্সরড এবং অনেক বেশি Creative (সৃজনশীল)। ফিকশন, ড্রামা বা ইমোশনাল স্ক্রিপ্ট লেখার জন্য এটি সেরা চয়েস।" },
+    { id: "meta-llama/llama-3.1-405b-instruct", label: "Meta: Llama 3.1 405B Instruct", appFunction: "Generate New Story - Professional, High Logic Rephrasing", details: "[প্যারামিটার: 405B | কনটেক্সট: 131K] এটি ওপেন সোর্সের সবচেয়ে বুদ্ধিমান মডেল। যদি আপনি খুব গোছানো, প্রফেশনাল এবং লজিক্যাল গল্প চান তবে এটি ব্যবহার করবেন। প্যারাফ্রেজিং-এর সময় এটি মূল ভাব বজায় রেখে খুব স্মার্টলি বাক্য পরিবর্তন করতে পারে।" },
+    { id: "qwen/qwen3-coder", label: "Qwen: Qwen3 Coder 480B A35B", appFunction: "Logical Structuring, Complex Plot Analysis", details: "[প্যারামিটার: 480B | কনটেক্সট: 262K] যদিও এটি কোডিং মডেল, কিন্তু এর লজিক এবং রিজনিং ক্ষমতা ৪৫০ বিলিয়নের উপরে। ডিটেকটিভ স্টোরি বা জটিল প্লট সাজানোর জন্য এটি ব্যবহার করতে পারেন।" },
+    { id: "upstage/solar-pro-3", label: "Upstage: Solar Pro 3", appFunction: "Powerful MoE Storytelling, Advanced Reasoning", details: "[প্যারামিটার: High (MoE) | কনটেক্সট: 128K] এটি একটি অত্যন্ত শক্তিশালী Mixture-of-Experts মডেল। এর লজিক এবং লেখার স্টাইল খুবই উন্নত। অ্যাপের \"Refine Story\" বা জটিল স্ক্রিপ্ট লেখার জন্য এটি চমৎকার বিকল্প।" },
+    { id: "openai/gpt-oss-120b", label: "OpenAI: gpt-oss-120b", appFunction: "General Purpose Writing, Legacy Support", details: "[প্যারামিটার: 120B | কনটেক্সট: 131K] ওপেনএআই-এর রিলিজ করা ওপেন ওয়েট মডেল। সাধারণ মানের গল্প বা ব্লগের জন্য ব্যবহার করা যেতে পারে।" },
+    { id: "tngtech/tng-r1t-chimera", label: "TNG: R1T Chimera", appFunction: "Creative Roleplay - Backup", details: "[প্যারামিটার: High | কনটেক্সট: 164K] এটিও চিমেরা সিরিজের আরেকটি ভেরিয়েন্ট। রোল-প্লে এবং ক্রিয়েটিভ লেখার জন্য ব্যবহারযোগ্য।" },
+    { id: "moonshotai/kimi-k2", label: "MoonshotAI: Kimi K2 0711", appFunction: "Creative Paraphrasing, Long Script Refinement", details: "[প্যারামিটার: 1T (MoE) | কনটেক্সট: 33K] ১ ট্রিলিয়ন প্যারামিটারের এই মডেলটি প্যারাফ্রেজিং-এর সময় রোবোটিক ভাব দূর করে মানুষের মতো ন্যাচারাল ফ্লো আনতে পারে।" },
+    { id: "nvidia/nemotron-3-nano-30b-a3b:free", label: "NVIDIA: Nemotron 3 Nano 30B A3B (Free)", appFunction: "Efficient Long Script Processing", details: "[প্যারামিটার: 30B | কনটেক্সট: 256K] এটি সাইজে ছোট হলেও এর মেমোরি অনেক বেশি (256K)। বড় ডকুমেন্ট প্রসেসিং-এর জন্য ভালো।" },
+    { id: "arcee-ai/trinity-large-thinking:free", label: "Arcee AI: Trinity Large Thinking (Free)", appFunction: "Advanced Reasoning, Agentic Tasks", details: "[প্যারামিটার: 19.3B | কনটেক্সট: 262K] শক্তিশালী ওপেন সোর্স রিজনিং মডেল যা এজেন্টিক ওয়ার্কফ্লো এবং জটিল লজিক্যাল কাজের জন্য খুব উপযোগী।" },
+    { id: "deepseek/deepseek-v4-flash:free", label: "DeepSeek: DeepSeek V4 Flash (Free)", appFunction: "Fast Inference, High Throughput", details: "[প্যারামিটার: 284B | কনটেক্সট: 1M] অত্যন্ত দ্রুত গতির এবং হাই থ্রুপুট মডেল। এটি বিশাল ১ মিলিয়ন কনটেক্সট সাপোর্ট করে এবং লজিক্যাল এনালাইসিসের জন্য দুর্দান্ত।" },
+    { id: "cognitivecomputations/dolphin-mistral-24b-venice-edition", label: "Venice: Uncensored", appFunction: "Uncensored Story Writing, Roleplay", details: "[প্যারামিটার: 24B | কনটেক্সট: 33K] এটি Mistral এর একটি আনসেন্সরড ভার্সন। যদি ইউজার এমন কোনো গল্প লিখতে চায় যেখানে কোনো রেস্ট্রিকশন থাকবে না, তবে এটি কাজে লাগবে।" },
+];
+
+export const translationModels = [
+    { id: "z-ai/glm-4.5-air:free", label: "Z.AI: GLM 4.5 Air (Free)", appFunction: "High Quality Translation - Asian Languages, Balanced Rephrasing", details: "[প্যারামিটার: 29B | কনটেক্সট: 131K] এটি এশিয়ান ভাষা এবং ইংরেজির মধ্যে অনুবাদের জন্য খুবই শক্তিশালী। এটি \"Thinking Mode\" ব্যবহার করে লজিক্যাল অনুবাদ করতে পারে।" },
+    { id: "nvidia/nemotron-nano-9b-v2", label: "NVIDIA: Nemotron Nano 9B V2", appFunction: "Mid-range Translation, Document Processing", details: "[প্যারামিটার: 9B | কনটেক্সট: 128K] এনভিডিয়ার এই মডেলটি ডকুমেন্ট বা অফিশিয়াল টেক্সট অনুবাদের জন্য বেশ ভালো।" },
+    { id: "qwen/qwen3-4b", label: "Qwen: Qwen3 4B", appFunction: "Fast Translation, Dense Logic", details: "[প্যারামিটার: 4B | কনটেক্সট: 41K] Qwen সিরিজের নতুন মডেল। এটি ছোট হলেও অত্যন্ত ডেন্স এবং স্মার্ট। অনুবাদের জন্য এটি বেশ Fast (দ্রুত)।" },
+    { id: "meta-llama/llama-3.2-3b-instruct", label: "Meta: Llama 3.2 3B Instruct", appFunction: "Fastest English Rephrasing - Fast", details: "[প্যারামিটার: 3B | কনটেক্সট: 131K] এটি তালিকার Fastest (সবচেয়ে দ্রুত) মডেল। শুধুমাত্র ইংরেজি ছোটখাটো রি-রাইট বা গ্রামার চেকের জন্য এটি সেরা।" },
+    { id: "google/gemma-3n-e4b-it", label: "Google: Gemma 3n 4B", appFunction: "Fast Mobile Optimized Translation - Bangla Supported", details: "[প্যারামিটার: 4B | কনটেক্সট: 8K] এটি গুগলের 'n' (Nano) সিরিজের মডেল। ১৪০+ ভাষা সাপোর্ট করে এবং লো-রিসোর্স ডিভাইসে খুব Fast (দ্রুত) কাজ করে।" },
+    { id: "google/gemma-3n-e2b-it", label: "Google: Gemma 3n 2B", appFunction: "Super Fast Translation, Basic Chat", details: "[প্যারামিটার: 2B | কনটেক্সট: 8K] লিস্টের সবচেয়ে ছোট এবং Super Fast (সুপার ফাস্ট) মডেল। খুব সাধারণ মানের দ্রুত অনুবাদ বা টেস্ট পারপাসে এটি ব্যবহার করা যেতে পারে।" },
+    { id: "liquid/lfm-2.5-1.2b-instruct", label: "LiquidAI: LFM2.5-1.2B-Instruct", appFunction: "Ultra-Lightweight Tasks", details: "[প্যারামিটার: 1.2B | কনটেক্সট: 32K] অত্যন্ত হালকা মডেল। শুধুমাত্র খুব সাধারণ এবং ছোট টেক্সট প্রসেসিংয়ের জন্য।" },
+    { id: "liquid/lfm-2.5-1.2b-thinking", label: "LiquidAI: LFM2.5-1.2B-Thinking", appFunction: "Experimental Reasoning", details: "[প্যারামিটার: 1.2B | কনটেক্সট: 32K] ছোট সাইজের মধ্যে রিজনিং বা লজিক টেস্ট করার জন্য এটি ব্যবহার করা যায়।" },
+];
+
+export const paidVisionModels = [
+    { id: "qwen/qwen3-vl-235b-a22b-thinking", label: "Qwen: Qwen3 VL 235B (Thinking)", appFunction: "Advanced Visual Analysis, Thinking Mode", details: "[Paid Model] [প্যারামিটার: 235B | কনটেক্সট: 128K] Qwen সিরিজের শক্তিশালী ভিশন মডেল। এটি ইমেজ অ্যানালাইসিসের সময় 'Thinking' মুড ব্যবহার করে জটিল দৃশ্য বুঝতে পারে।" },
+    { id: "openai/gpt-4o", label: "OpenAI: GPT-4o", appFunction: "Vision", details: "Paid Model" },
+    { id: "anthropic/claude-3.5-sonnet", label: "Anthropic: Claude 3.5 Sonnet", appFunction: "Vision", details: "Paid Model" },
+    { id: "google/gemini-1.5-pro", label: "Google: Gemini 1.5 Pro", appFunction: "Vision", details: "Paid Model" },
+    { id: "mistralai/mistral-nemo", label: "Mistral: Nemo", appFunction: "Vision", details: "Paid Model" }
+];
+export const paidTextModels = [ 
+    { id: "meta-llama/llama-3.1-70b-instruct", label: "Meta: Llama 3.1 70B Instruct", appFunction: "Text", details: "Paid Model" },
+    { id: "arcee-ai/trinity-large-preview", label: "Arcee AI: Trinity Large Preview", appFunction: "Pure Storytelling, Idea to Story", details: "Paid Model" },
+    { id: "arcee-ai/trinity-mini", label: "Arcee AI: Trinity Mini", appFunction: "Lightweight Storytelling, Quick Ideas", details: "Paid Model" },
+    { id: "tngtech/deepseek-r1t2-chimera", label: "TNG: DeepSeek R1T2 Chimera", appFunction: "Text", details: "Paid Model [প্যারামিটার: 671B]" },
+    { id: "deepseek/deepseek-r1-0528", label: "DeepSeek: R1 0528", appFunction: "Text", details: "Paid Model [প্যারামিটার: 671B]" },
+    { id: "tngtech/deepseek-r1t-chimera", label: "TNG: DeepSeek R1T Chimera", appFunction: "Text", details: "Paid Model" },
+];
+
+export type ModelItem = { id: string; label: string; appFunction: string; details: string; };
+export type HeaderItem = { isHeader: true; label: string; };
+export const allTextVisionModels: (ModelItem | HeaderItem)[] = [
+    { isHeader: true, label: "🎬 Visual Analysis Models" }, ...visualAnalysisModels,
+    { isHeader: true, label: "📝 Story Generation, Creative Writing & Refinement" }, ...storyModels,
+    { isHeader: true, label: "🌐 Translation & Multilingual" }, ...translationModels,
+    { isHeader: true, label: "💎 Paid Vision Models" }, ...paidVisionModels,
+    { isHeader: true, label: "💎 Paid Text Models" }, ...paidTextModels
+];
+
+export const openRouterFreeImageModels: {value: string, label: string}[] = [
+    { value: "pollinations", label: "Pollinations AI (Totally Free, No Key Required)" }
+];
+
+export const openRouterPaidImageModels = [
+    // --- Formerly 'Free', now correctly labeled as Paid for output ---
+    { value: "black-forest-labs/flux.2-max", label: "FLUX.2 Max (Paid) [Top-Tier Quality]" },
+    { value: "black-forest-labs/flux.2-pro", label: "FLUX.2 Pro (Paid) [High-End Generation & Editing]" },
+    { value: "sourceful/riverflow-v2-max-preview", label: "Riverflow V2 Max (Paid) [Powerful Text-to-Image]" },
+    { value: "black-forest-labs/flux.2-klein-4b", label: "FLUX.2 Klein 4B (Paid) [Fast & Cost-Effective]" },
+    { value: "bytedance-seed/seedream-4.5", label: "Seedream 4.5 (Paid) [Editing & Consistency]" },
+    { value: "playgroundai/playground-v2.5", label: "Playground v2.5 (Paid) [Aesthetic Images]" },
+    // --- Original Paid Models ---
+    { value: "stabilityai/stable-diffusion-3-medium", label: "Stability AI: SD3 Medium (Paid)" },
+    { value: "openai/dall-e-3", label: "OpenAI: DALL-E 3 (Paid)" },
+    { value: "ideogram/ideogram-v2", label: "Ideogram v2 (Paid)" },
+    { value: "google/imagen-3", label: "Google: Imagen 3 (Paid)" },
+];

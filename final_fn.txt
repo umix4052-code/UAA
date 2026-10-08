@@ -1,0 +1,55 @@
+export const splitScriptIntoMeaningfulChunks = (text: string, maxChunkLength = 2800): string[] => {
+    if (!text || text.trim().length === 0) return [];
+    if (text.length <= maxChunkLength) return [text];
+
+    // Split text into sentences, keeping the delimiters (e.g., '.', '!', '?').
+    const sentences = text.match(/[^.!?]+[.!?]*/g) || [];
+    if (sentences.length === 0) {
+        // Fallback for text without any sentence-ending punctuation.
+        // Hard split the text into chunks of maxChunkLength.
+        const chunks = [];
+        for (let i = 0; i < text.length; i += maxChunkLength) {
+            chunks.push(text.substring(i, i + maxChunkLength));
+        }
+        return chunks;
+    }
+
+    const chunks: string[] = [];
+    let currentChunk = "";
+
+    for (const sentence of sentences) {
+        const trimmedSentence = sentence.trim();
+        if (trimmedSentence.length === 0) continue;
+
+        // If a single sentence itself is larger than the max chunk length,
+        // we must split it. We first push any existing chunk.
+        if (trimmedSentence.length > maxChunkLength) {
+            if (currentChunk.length > 0) {
+                chunks.push(currentChunk.trim());
+                currentChunk = "";
+            }
+            // Then, hard split the oversized sentence.
+            for (let i = 0; i < trimmedSentence.length; i += maxChunkLength) {
+                chunks.push(trimmedSentence.substring(i, i + maxChunkLength));
+            }
+        } 
+        // If adding the next sentence would exceed the limit,
+        // push the current chunk and start a new one with the current sentence.
+        else if (currentChunk.length + trimmedSentence.length + 1 > maxChunkLength) {
+            chunks.push(currentChunk.trim());
+            currentChunk = trimmedSentence;
+        } 
+        // Otherwise, add the sentence to the current chunk.
+        else {
+            currentChunk += (currentChunk.length > 0 ? " " : "") + trimmedSentence;
+        }
+    }
+
+    // Add the last remaining chunk if it exists.
+    if (currentChunk.length > 0) {
+        chunks.push(currentChunk.trim());
+    }
+
+    return chunks;
+};
+

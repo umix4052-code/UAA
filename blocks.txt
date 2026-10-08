@@ -1,0 +1,31 @@
+1. AI Prompt Engine (ai-prompts.ts)
+-----------------------------------
+**PHASE 3: JSON OUTPUT STRUCTURE**
+The final output MUST be a valid JSON object with a single key "scenes" containing a JSON array. Each scene object must have exactly four keys:
+1. "scene_description": The breakdown of what is happening.
+2. "camera_angle": "Select the most appropriate primary camera angle..."
+3. "characters_in_scene": An array of strings...
+4. "image_prompt": A highly detailed and structured cinematic prompt.
+
+(এবং getVisualRemakeJSON_AnalysisPrompt এর ভেতরেও:)
+      "image_prompt": "A single, synthesized, cinematic paragraph combining all visual details..."
+
+2. Parsing Logic (index.tsx)
+-----------------------------------
+const cleanedJson = extractJsonFromString(responseText);
+let batchResults: SceneResult[] = JSON.parse(cleanedJson).scenes;
+batchResults = injectCharacterDescriptions(batchResults, characterProfilesRef.current);
+batchResults = injectPostProcessingStyles(batchResults, projectNicheRef.current, selectedThemesRef.current, selectedModifiersRef.current);
+batchResults = batchResults.map(r => ({ ...r, imageStatus: 'pending', retryCount: 0, safetyRetryCount: 0 }));
+
+3. TypeScript Interface (types.ts)
+-----------------------------------
+export type SceneResult = { 
+  scene_description: string; 
+  image_prompt: string; 
+  characters_in_scene?: string[]; 
+  video_prompt?: string; 
+  imageUrl?: string; 
+  imageStatus: 'pending' | 'loading' | 'completed' | 'failed' | 'retrying'; 
+  ... 
+};
