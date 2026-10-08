@@ -25,6 +25,8 @@ interface CharacterManagerProps {
     // Script Analysis Props
     handleAnalyzeScript?: (options: { extractCharacters: boolean; configureVoice: boolean; genderPreference?: 'any' | 'male' | 'female', keepExistingVoice?: boolean, configureVisuals?: boolean }) => Promise<void>;
     isExtractingCharacters?: boolean;
+    // Optional notification callback (for reference-image generation feedback)
+    notify?: (message: string, isError?: boolean) => void;
 }
 
 export const CharacterManager: React.FC<CharacterManagerProps> = ({
@@ -32,10 +34,128 @@ export const CharacterManager: React.FC<CharacterManagerProps> = ({
     handleCharacterAiDescriptionChange,
     handleSetCharacterProfiles, isDraggingChar, handleDragOver, handleDragLeave, handleDrop,
     handlePaste, characterImageInputRefs, handleImageUpload, isAnalyzingCharacter, onStop,
-    handleAnalyzeScript, isExtractingCharacters
+    handleAnalyzeScript, isExtractingCharacters, notify
 }) => {
     const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
     const characterContainerRef = useRef<HTMLDivElement>(null);
+    // --- Character reference image pre-generation ---
+    const [refImageModel, setRefImageModel] = useState<string>('pollinations');
+    const [selectedForGen, setSelectedForGen] = useState<Record<string, boolean>>({});
+    const [generatingRefIds, setGeneratingRefIds] = useState<Record<string, boolean>>({});
+
+    const safeFileName = (s: string): string =>
+        (s || 'character').replace(/[^a-z0-9_\-]+/gi, '_').replace(/_+/g, '_').replace(/^_|_$/g, '') || 'character';
+
+    const triggerDownload = (href: string, filename: string) => {
+        const a = document.createElement('a');
+        a.href = href;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+    };
+
+    const displayNameOf = (p: CharacterProfile, index: number): string =>
+        p.name?.trim() || (p as any).bible_id || `Character ${index + 1}`;
+
+    const descriptionOf = (p: CharacterProfile): string =>
+        [p.userDescription, p.aiDescription].filter(Boolean).join(' ')
+            .replace(/--- AI (Video|Script) Analysis ---\s*/gi, '').trim();
+
+    const generateRefImage = async (profile: CharacterProfile, index: number) => {
+        const desc = descriptionOf(profile);
+        const displayName = displayNameOf(profile, index);
+        if (!desc) {
+            notify?.(`No description yet for ${displayName} — add details or run extraction first.`, true);
+            return;
+        }
+        if (refImageModel !== 'pollinations') {
+            notify?.(`Reference-image generation currently supports Pollinations AI (free) only.`, true);
+            return;
+        }
+        setGeneratingRefIds(prev => ({ ...prev, [profile.id]: true }));
+        try {
+            const prompt = `Character reference portrait of ${displayName}: ${desc}. Front-facing portrait, head and shoulders, neutral studio background, sharp focus, photorealistic, consistent character design.`;
+            const seed = Math.floor(Math.random() * 100000000);
+            const url = `https://image.pollinations.ai/p/${encodeURIComponent(prompt)}?width=768&height=1024&seed=${seed}&nologo=true`;
+            const res = await fetch(url);
+            if (!res.ok) throw new Error(`Pollinations AI error: ${res.statusText}`);
+            const blob = await res.blob();
+            const dataUrl = await new Promise<string>((resolve, reject) => {
+                const r = new FileReader();
+                r.onloadend = () => resolve(r.result as string);
+                r.onerror = reject;
+                r.readAsDataURL(blob);
+            });
+            const fileName = `${safeFileName(displayName)}_ref.png`;
+            handleSetCharacterProfiles(prev => prev.map(p => p.id === profile.id
+                ? { ...p, image: { name: fileName, size: `${Math.max(1, Math.round(blob.size / 1024))} KB`, dataUrl } }
+                : p));
+            notify?.(`Reference image generated for ${displayName}.`);
+        } catch (e: any) {
+            notify?.(`Reference image failed for ${displayName}: ${e?.message || e}`, true);
+        } finally {
+            setGeneratingRefIds(prev => { const n = { ...prev }; delete n[profile.id]; return n; });
+        }
+    };
+
+    const generateSelectedRefImages = async () => {
+        const targets = characterProfiles
+            .map((p, i) => ({ p, i }))
+            .filter(({ p }) => selectedForGen[p.id]);
+        if (targets.length === 0) {
+            notify?.('Tick one or more characters first, or use Generate All.', true);
+            return;
+        }
+        for (const { p, i } of targets) {
+            // eslint-disable-next-line no-await-in-loop
+            await generateRefImage(p, i);
+        }
+    };
+
+    const generateAllRefImages = async () => {
+        for (let i = 0; i < characterProfiles.length; i++) {
+            // eslint-disable-next-line no-await-in-loop
+            await generateRefImage(characterProfiles[i], i);
+        }
+    };
+
+    const toggleSelectForGen = (id: string) =>
+        setSelectedForGen(prev => ({ ...prev, [id]: !prev[id] }));
+
+    const downloadMasterList = () => {
+        const lines: string[] = ['# Character Master List', '', `Exported: ${new Date().toLocaleString()}`, ''];
+        characterProfiles.forEach((p, i) => {
+            const nm = displayNameOf(p, i);
+            lines.push(`## ${i + 1}. ${nm}`);
+            if ((p as any).bible_id) lines.push(`- Character ID: ${(p as any).bible_id}`);
+            const desc = descriptionOf(p);
+            if (desc) { lines.push('', desc, ''); }
+            lines.push(`- Reference image: ${p.image?.dataUrl ? `yes (${p.image.name || 'attached'})` : 'not generated yet'}`);
+            lines.push('');
+        });
+        const blob = new Blob([lines.join('\n')], { type: 'text/markdown' });
+        const url = URL.createObjectURL(blob);
+        triggerDownload(url, 'character-master-list.md');
+        setTimeout(() => URL.revokeObjectURL(url), 5000);
+        notify?.('Master character list downloaded.');
+    };
+
+    const downloadAllRefImages = async () => {
+        const withImages = characterProfiles
+            .map((p, i) => ({ p, i }))
+            .filter(({ p }) => p.image?.dataUrl);
+        if (withImages.length === 0) {
+            notify?.('No reference images to download yet — generate them first.', true);
+            return;
+        }
+        for (const { p, i } of withImages) {
+            triggerDownload(p.image!.dataUrl!, `${safeFileName(displayNameOf(p, i))}_ref.png`);
+            // eslint-disable-next-line no-await-in-loop
+            await new Promise(r => setTimeout(r, 600));
+        }
+        notify?.(`${withImages.length} reference image(s) downloading (names = character names).`);
+    };
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
@@ -102,6 +222,51 @@ export const CharacterManager: React.FC<CharacterManagerProps> = ({
                     </button>
                 </div>
             )}
+            {/* --- Character reference image pre-generation toolbar --- */}
+            <div style={{ marginBottom: '1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap', border: '1px dashed var(--border)', borderRadius: '8px', padding: '0.6rem 0.8rem' }}>
+                <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-main)' }}>🖼️ Reference Images:</span>
+                <select
+                    value={refImageModel}
+                    onChange={(e) => setRefImageModel(e.target.value)}
+                    className="app-input"
+                    title="Image model used for reference generation"
+                    style={{ width: 'auto', fontSize: '0.8rem', padding: '0.35rem 0.5rem' }}
+                >
+                    <option value="pollinations">Pollinations AI (Free, No Key)</option>
+                </select>
+                <button
+                    className="btn primary"
+                    style={{ fontSize: '0.8rem', padding: '0.4rem 0.8rem' }}
+                    onClick={generateAllRefImages}
+                    title="Generate a reference image for every character, one click"
+                >
+                    ⚡ Generate All
+                </button>
+                <button
+                    className="btn secondary"
+                    style={{ fontSize: '0.8rem', padding: '0.4rem 0.8rem' }}
+                    onClick={generateSelectedRefImages}
+                    title="Generate only for ticked characters"
+                >
+                    ✓ Generate Selected
+                </button>
+                <button
+                    className="btn secondary"
+                    style={{ fontSize: '0.8rem', padding: '0.4rem 0.8rem' }}
+                    onClick={downloadMasterList}
+                    title="Download all character names + details as one file"
+                >
+                    ⬇ Master List
+                </button>
+                <button
+                    className="btn secondary"
+                    style={{ fontSize: '0.8rem', padding: '0.4rem 0.8rem' }}
+                    onClick={downloadAllRefImages}
+                    title="Download every generated reference image, named by character"
+                >
+                    ⬇ All Images
+                </button>
+            </div>
             <div className="character-profiles-container">
                 {characterProfiles.map((profile, index) => {
                     const isExpanded = expandedIds[profile.id];
@@ -134,6 +299,23 @@ export const CharacterManager: React.FC<CharacterManagerProps> = ({
                                     )}
                                 </div>
                                 <div onClick={(e) => e.stopPropagation()} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                                    <label title="Tick to include in Generate Selected" style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.75rem', color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                                        <input
+                                            type="checkbox"
+                                            checked={!!selectedForGen[profile.id]}
+                                            onChange={() => toggleSelectForGen(profile.id)}
+                                        />
+                                        Select
+                                    </label>
+                                    <button
+                                        onClick={() => generateRefImage(profile, index)}
+                                        disabled={!!generatingRefIds[profile.id]}
+                                        className="secondary-action-btn"
+                                        style={{ fontSize: '0.75rem', padding: '0.3rem 0.6rem', width: 'auto', height: 'auto' }}
+                                        title="Generate reference image for this character"
+                                    >
+                                        {generatingRefIds[profile.id] ? '⏳...' : '🖼️ Gen'}
+                                    </button>
                                     <button onClick={() => handleRemoveCharacter(profile.id)} className="remove-btn" style={{ position: 'static', margin: 0, fontSize: '1.2rem', padding: '0 0.5rem' }}>×</button>
                                 </div>
                             </div>
@@ -219,6 +401,16 @@ export const CharacterManager: React.FC<CharacterManagerProps> = ({
                                         {profile.image ? (
                                             <div className="ref-file-item">
                                                 <img src={profile.image.dataUrl || undefined} alt="Character Reference" className="ref-file-preview" />
+                                                {profile.image.dataUrl && (
+                                                    <button
+                                                        onClick={() => triggerDownload(profile.image!.dataUrl!, `${safeFileName(displayNameOf(profile, index))}_ref.png`)}
+                                                        className="ref-delete-btn"
+                                                        title={`Download as ${safeFileName(displayNameOf(profile, index))}_ref.png`}
+                                                        style={{ right: '2rem', background: 'var(--primary)' }}
+                                                    >
+                                                        ⬇
+                                                    </button>
+                                                )}
                                                 <button onClick={() => handleSetCharacterProfiles(prev => prev.map(p => p.id === profile.id ? { ...p, image: null } : p))} className="ref-delete-btn">×</button>
                                             </div>
                                         ) : <p>Drop or Paste Image</p>}
