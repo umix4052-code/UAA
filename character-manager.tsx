@@ -127,6 +127,11 @@ export const CharacterManager: React.FC<CharacterManagerProps> = ({
                                     <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: '600' }}>
                                         {profile.name ? profile.name : `Character ${index + 1}`}{previewText}
                                     </h3>
+                                    {profile.bible_id && (
+                                        <span title="Internal character ID used for tagging" style={{ fontSize: '0.7rem', backgroundColor: 'var(--surface-light)', border: '1px solid var(--border)', borderRadius: '4px', padding: '0.15rem 0.4rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+                                            ID: {profile.bible_id}
+                                        </span>
+                                    )}
                                 </div>
                                 <div onClick={(e) => e.stopPropagation()} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                                     <button onClick={() => handleRemoveCharacter(profile.id)} className="remove-btn" style={{ position: 'static', margin: 0, fontSize: '1.2rem', padding: '0 0.5rem' }}>×</button>

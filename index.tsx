@@ -3086,8 +3086,18 @@ handleError(lastError || finalErrorMsg, `Image Generation Total Failure`, {}); }
                                 const newProfiles = [...characterProfilesRef.current];
                                 let addedCount = 0;
                                 
+                                // Suggest a real name when the AI's visual description starts with one
+                                // (e.g., "Emily Carter is a slender woman...") — editable suggestion only.
+                                // Pure-visual descriptions ("A 45-year-old male...") yield nothing;
+                                // the name box stays blank for the user to fill.
+                                const suggestNameFromBible = (desc: string): string => {
+                                    const m = /^\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})\s+is\s+(?:a|an|the)\b/.exec(desc || '');
+                                    return m ? m[1] : '';
+                                };
+
                                 data.character_bible.forEach((c: any) => {
                                     if (!c.character_id || !c.visual_description) return;
+                                    const suggestedName = suggestNameFromBible(c.visual_description);
                                     
                                     // Check if there is an existing profile with the same bible_id
                                     const existingWithSameId = newProfiles.find(p => p.bible_id === c.character_id);
@@ -3114,6 +3124,7 @@ handleError(lastError || finalErrorMsg, `Image Generation Total Failure`, {}); }
                                             
                                             newProfiles.push({
                                                 id: crypto.randomUUID(),
+                                                name: suggestedName || undefined,
                                                 bible_id: newId,
                                                 userDescription: "",
                                                 aiDescription: `--- AI Video Analysis ---\n${c.visual_description}`,
@@ -3130,6 +3141,7 @@ handleError(lastError || finalErrorMsg, `Image Generation Total Failure`, {}); }
                                         if (!exists) {
                                             newProfiles.push({
                                                 id: crypto.randomUUID(),
+                                                name: suggestedName || undefined,
                                                 bible_id: c.character_id,
                                                 userDescription: "",
                                                 aiDescription: `--- AI Video Analysis ---\n${c.visual_description}`,
