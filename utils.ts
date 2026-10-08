@@ -202,8 +202,8 @@ export const splitScriptIntoMeaningfulChunks = (text: string, maxChunkLength = 2
     if (!text || text.trim().length === 0) return [];
     if (text.length <= maxChunkLength) return [text];
 
-    // Split text into sentences, keeping the delimiters (e.g., '.', '!', '?').
-    const sentences = text.match(/[^.!?]+[.!?]*/g) || [];
+    // Split text into sentences, keeping the delimiters (e.g., '.', '!', '?', Bengali '।').
+    const sentences = text.match(/[^.!?।]+[.!?।]*/g) || [];
     if (sentences.length === 0) {
         // Fallback for text without any sentence-ending punctuation.
         // Hard split the text into chunks of maxChunkLength.

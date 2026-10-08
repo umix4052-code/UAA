@@ -3298,7 +3298,7 @@ handleError(lastError || finalErrorMsg, `Image Generation Total Failure`, {}); }
                                     cinematicPrompts.push(fullText);
 
                                     // Update context for the next batch/group
-                                    const sentences = fullText.match(/[^.!?]+[.!?]+/g) || [fullText];
+                                    const sentences = fullText.match(/[^.!?।]+[.!?।]+/g) || [fullText];
                                     rollingContext = sentences.slice(-2).join(' ').trim();
                                 }
 

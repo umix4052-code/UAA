@@ -111,6 +111,10 @@ export const injectCharacterDescriptions = (scenes: any[], characterProfiles: Ch
                         return desc || "";
                     }
                 }
+                // No matching profile: if the tag is an auto-generated placeholder ID
+                // (char_1, character_2, ...), drop it instead of leaking the raw ID
+                // into the final prompt. Real names still fall through as plain text.
+                if (/^(char(acter)?[_\s-]*\d+|\d+)$/i.test(cleanName)) return '';
                 return cleanName;
             });
         };
