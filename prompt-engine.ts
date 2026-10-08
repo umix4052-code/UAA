@@ -238,14 +238,15 @@ export const getModelSpecificPromptGenerator = (
                 ? `Incorporate these cinematic techniques: ${uniqueInstructions.join(', ')}.`
                 : "Standard, smooth camera movement.";
 
-            const characterNames = characterProfiles.map(p => p.name?.trim()).filter(Boolean).join(', ');
-            const finalCharacterLock = characterNames ? `
+            const characterIds = characterProfiles.map(p => p.name?.trim() || (p as any).bible_id).filter(Boolean).join(', ');
+            const finalCharacterLock = characterIds ? `
 ==================================================
 **CRITICAL CHARACTER TAGGING RULE:**
-The script features these specific main characters: [ ${characterNames} ].
+The script features these specific main characters: [ ${characterIds} ].
 1. Whenever these characters are involved in a scene, you MUST use this exact bracket format in the video prompt: {{Character: Name}}.
 2. Example: If the script mentions Roy, you MUST write {{Character: Roy}} in your prompt.
 3. NEVER replace their names with pronouns (he/she) or generic nouns (the man, the detective, the girl). You MUST use the bracketed name every single time they appear.
+4. DIALOGUE ATTRIBUTION: If any character speaks in this scene, attribute EVERY spoken line with the same tag format: {{Character: Name}} says: "...". Use the exact name when known, otherwise the character_id (e.g., {{Character: char_1}}). NEVER write a bare name for the speaker.
 ==================================================` : '';
 
             // Enhance prompts with Niche & Negative constraints
@@ -298,7 +299,7 @@ Now, using the example as a quality guide, generate the single-paragraph video p
 
         default:
             const characterInfo = characterInstruction 
-                ? `\n\nAVAILABLE CHARACTERS: ${characterInstruction}\n\nCRITICAL RULE: First, read the scene description. ONLY include a character's visual details if they logically belong in this specific scene. DO NOT force all characters into the scene. DO NOT write raw IDs like 'char_1' in the final prompt.`
+                ? `\n\nAVAILABLE CHARACTERS: ${characterInstruction}\n\nCRITICAL RULE: First, read the scene description. ONLY include a character's visual details if they logically belong in this specific scene. DO NOT force all characters into the scene. NEVER write a raw character ID like 'char_1' as plain prose; inside {{Character: ...}} tags you MAY use the character_id when no real name is known (the local system expands it). DIALOGUE ATTRIBUTION: if any character speaks, attribute EVERY spoken line as {{Character: Name}} says: "..." with the tag format, never a bare name.`
                 : "";
             const motionInfo = uniqueInstructions.length > 0 ? ` Use these camera techniques: ${uniqueInstructions.join(', ')}.` : "";
             const cameraInfo = cameraFinal ? ` The shot type should be: ${cameraFinal}.` : "";

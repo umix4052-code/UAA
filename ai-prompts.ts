@@ -951,6 +951,10 @@ For EACH scene you generate, you MUST perform these tasks:
 3.  **Generate Scene & Prompt:**
     - Create a concise 'scene_description' (the storyboard summary).
     - Synthesize all visual details (action, environment, and the visual description of any present characters from the bible) into a single, cohesive, cinematic paragraph for the 'master_prompt'. This prompt is for an AI image generator. DO NOT use labels or lists inside the 'master_prompt'.
+4.  **Attribute Dialogue (IF ANY CHARACTER SPEAKS):**
+    - If any character speaks in this segment (heard in audio, visible lip movement, or clearly inferable from context), you MUST attribute EVERY spoken line to its speaker using the character tag format: {{Character: Name}} says: "..." (example: {{Character: char_1}} says: "We have to go, now.").
+    - Use the character's exact NAME when it is known (from the existing-characters list or the bible); otherwise use their character_id (e.g., char_1). NEVER write a bare name for the speaker — always the {{Character: ...}} tag.
+    - Place the attributed dialogue naturally at the end of the 'master_prompt' paragraph.
 
 **PHASE 3: JSON OUTPUT STRUCTURE (CRITICAL)**
 - You MUST format your entire response as a single, valid JSON object.
@@ -1059,7 +1063,7 @@ ${profileDescriptions}`;
         if (incSfx) requestedAudio.push("action-triggered sound effects (SFX)");
         if (incDialogue) requestedAudio.push("dialogue or spoken words (if any character is speaking)");
         
-        audioInferenceRule = `**AUDIO INFERENCE RULE:** While analyzing the video frames, do not just describe the visuals. You MUST also infer and predict the audio landscape of the scene: ${requestedAudio.join(", ")}. Include this naturally at the end of your description.`;
+        audioInferenceRule = `**AUDIO INFERENCE RULE:** While analyzing the video frames, do not just describe the visuals. You MUST also infer and predict the audio landscape of the scene: ${requestedAudio.join(", ")}. Include this naturally at the end of your description.${incDialogue ? `\n\n**DIALOGUE ATTRIBUTION RULE (CRITICAL):** If any dialogue is present, you MUST attribute EVERY spoken line to its speaker using the character tag format: {{Character: Name}} says: "..." (example: {{Character: Emily Carter}} says: "We have to go, now."). Use the exact name from the Available Characters list when the speaker matches a listed character; otherwise use their character_id (e.g., char_1). NEVER write a bare name for the speaker — always the {{Character: ...}} tag, so the local system can inject the speaker's full visual description.` : ''}`;
     }
 
     const styleBlendingRule = `**STYLE BLENDING RULE (CRITICAL):** Extract the exact camera angles, physical actions, and core locations strictly from the video frames. THEN, coat these visual facts with the Art Style, Textures, and Atmosphere defined in the Project Niche. DO NOT invent niche-specific actions, camera moves, or locations that are not physically present in the frames.`;
